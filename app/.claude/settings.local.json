@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(wsl -e bash -c \"node --version && npm --version\")"
+    ]
+  }
+}
