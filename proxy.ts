@@ -31,8 +31,13 @@ export async function proxy(request: NextRequest) {
   // Rutas públicas
   if (pathname.startsWith('/login')) {
     if (user) {
-      return NextResponse.redirect(new URL('/inventario', request.url))
+      return NextResponse.redirect(new URL('/dashboard', request.url))
     }
+    return response
+  }
+
+  // Tienda pública — no requiere autenticación
+  if (pathname.startsWith('/tienda')) {
     return response
   }
 

@@ -14,7 +14,6 @@ import {
   BarChart3,
   Settings,
   X,
-  Flame,
 } from 'lucide-react'
 
 const NAV = [
@@ -57,7 +56,7 @@ export default function Sidebar({ open, onClose }: Props) {
           position: 'fixed',
           top: 0, left: 0, bottom: 0,
           width: 'var(--sidebar-w)',
-          background: '#0c0c0c',
+          background: '#0b0912',
           borderRight: '1px solid var(--border)',
           display: 'flex',
           flexDirection: 'column',
@@ -74,18 +73,22 @@ export default function Sidebar({ open, onClose }: Props) {
           alignItems: 'center',
           justifyContent: 'space-between',
         }}>
-          <div>
-            <div style={{
-              fontFamily: 'var(--font-cormorant, serif)',
-              fontSize: '20px',
-              fontWeight: 600,
-              color: 'var(--gold)',
-              letterSpacing: '0.05em',
-            }}>
-              ABUMA.MA
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px' }}>
-              Gestión · Tienda Holística
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="ABUMA.MA" width={36} height={36} style={{ objectFit: 'contain' }} />
+            <div>
+              <div style={{
+                fontFamily: 'var(--font-cormorant, serif)',
+                fontSize: '18px',
+                fontWeight: 600,
+                color: 'var(--gold)',
+                letterSpacing: '0.05em',
+              }}>
+                ABUMA.MA
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                Tienda Holística
+              </div>
             </div>
           </div>
           <button
@@ -129,19 +132,6 @@ export default function Sidebar({ open, onClose }: Props) {
           })}
         </nav>
 
-        {/* Footer */}
-        <div style={{
-          padding: '12px 16px',
-          borderTop: '1px solid var(--border)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-        }}>
-          <Flame size={14} style={{ color: 'var(--gold-dim)' }} />
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            Tienda Holística
-          </span>
-        </div>
       </aside>
 
       <style>{`

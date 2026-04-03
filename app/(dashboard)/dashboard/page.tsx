@@ -1,4 +1,5 @@
 'use client'
+export const dynamic = 'force-dynamic'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -262,7 +263,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Gráfico + Últimas ventas */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 300px', gap: '16px' }} className="dashboard-grid">
 
         {/* Gráfico ventas semana */}
         <div className="card" style={{ padding: '0' }}>
@@ -354,6 +355,13 @@ export default function DashboardPage() {
         </div>
       )}
 
+      <style>{`
+        @media (max-width: 768px) {
+          .dashboard-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
     </div>
   )
 }

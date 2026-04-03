@@ -1,4 +1,5 @@
 'use client'
+export const dynamic = 'force-dynamic'
 export default function FacturacionPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="fade-in">

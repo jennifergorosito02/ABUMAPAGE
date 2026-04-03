@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Flame, Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -58,27 +58,15 @@ export default function LoginPage() {
 
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '48px', height: '48px',
-            background: 'rgba(201,162,39,0.1)',
-            borderRadius: '12px',
-            marginBottom: '16px',
-          }}>
-            <Flame size={24} style={{ color: 'var(--gold)' }} />
-          </div>
-          <div style={{
-            fontFamily: 'var(--font-cormorant, serif)',
-            fontSize: '28px',
-            fontWeight: 600,
-            color: 'var(--gold)',
-            letterSpacing: '0.08em',
-          }}>
-            ABUMA.MA
-          </div>
-          <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo.png"
+            alt="ABUMA.MA"
+            width={120}
+            height={120}
+            style={{ objectFit: 'contain', marginBottom: '12px' }}
+          />
+          <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
             Sistema de gestión
           </div>
         </div>

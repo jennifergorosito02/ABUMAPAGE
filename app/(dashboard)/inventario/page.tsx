@@ -1,4 +1,5 @@
 'use client'
+export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -8,13 +9,6 @@ import {
   Pencil, Trash2, ChevronUp, ChevronDown, RefreshCw,
 } from 'lucide-react'
 
-const LINEAS = [
-  'Sahumerio Tibetano',
-  'Vela Larga Lisa',
-  'Vela Larga Combinada',
-  'Vela Corta',
-  'Velón 7 Días',
-]
 
 function formatARS(n: number) {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n)
@@ -44,6 +38,9 @@ export default function InventarioPage() {
   const [productos, setProductos] = useState<Producto[]>([])
   const [proveedores, setProveedores] = useState<Proveedor[]>([])
   const [loading, setLoading] = useState(true)
+  const [lineas, setLineas] = useState<string[]>([])
+  const [nuevaLinea, setNuevaLinea] = useState('')
+  const [agregandoLinea, setAgregandoLinea] = useState(false)
   const [search, setSearch] = useState('')
   const [filterLinea, setFilterLinea] = useState('')
   const [filterStock, setFilterStock] = useState('')
@@ -67,7 +64,10 @@ export default function InventarioPage() {
       .eq('activo', true)
       .order('linea')
       .order('nombre')
-    setProductos(data ?? [])
+    const prods = data ?? []
+    setProductos(prods)
+    const lineasUnicas = [...new Set(prods.map((p: any) => p.linea).filter(Boolean))].sort() as string[]
+    setLineas(lineasUnicas)
     setLoading(false)
   }, [])
 
@@ -256,7 +256,7 @@ export default function InventarioPage() {
 
         <select value={filterLinea} onChange={e => setFilterLinea(e.target.value)} style={{ flex: '0 1 200px' }}>
           <option value="">Todas las líneas</option>
-          {LINEAS.map(l => <option key={l} value={l}>{l}</option>)}
+          {lineas.map(l => <option key={l} value={l}>{l}</option>)}
         </select>
 
         <select value={filterStock} onChange={e => setFilterStock(e.target.value)} style={{ flex: '0 1 150px' }}>
@@ -412,10 +412,46 @@ export default function InventarioPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '5px' }}>Línea</label>
-                    <select value={form.linea} onChange={e => setForm(f => ({ ...f, linea: e.target.value }))}>
-                      <option value="">Sin línea</option>
-                      {LINEAS.map(l => <option key={l} value={l}>{l}</option>)}
-                    </select>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <select value={form.linea} onChange={e => setForm(f => ({ ...f, linea: e.target.value }))} style={{ flex: 1 }}>
+                        <option value="">Sin línea</option>
+                        {lineas.map(l => <option key={l} value={l}>{l}</option>)}
+                      </select>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAgregandoLinea(true)} title="Nueva línea" style={{ padding: '8px 10px', flexShrink: 0 }}>+</button>
+                    </div>
+                    {agregandoLinea && (
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                        <input
+                          autoFocus
+                          value={nuevaLinea}
+                          onChange={e => setNuevaLinea(e.target.value)}
+                          placeholder="Nombre de la nueva línea"
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              if (nuevaLinea.trim()) {
+                                const nl = nuevaLinea.trim()
+                                setLineas(prev => [...new Set([...prev, nl])].sort())
+                                setForm(f => ({ ...f, linea: nl }))
+                                setNuevaLinea('')
+                                setAgregandoLinea(false)
+                              }
+                            }
+                            if (e.key === 'Escape') { setAgregandoLinea(false); setNuevaLinea('') }
+                          }}
+                        />
+                        <button type="button" className="btn btn-primary btn-sm" style={{ flexShrink: 0 }} onClick={() => {
+                          if (nuevaLinea.trim()) {
+                            const nl = nuevaLinea.trim()
+                            setLineas(prev => [...new Set([...prev, nl])].sort())
+                            setForm(f => ({ ...f, linea: nl }))
+                            setNuevaLinea('')
+                            setAgregandoLinea(false)
+                          }
+                        }}>OK</button>
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ flexShrink: 0 }} onClick={() => { setAgregandoLinea(false); setNuevaLinea('') }}>✕</button>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '5px' }}>Marca</label>

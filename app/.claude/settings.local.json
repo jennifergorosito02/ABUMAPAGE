@@ -3,7 +3,9 @@
     "allow": [
       "Bash(npm install:*)",
       "Bash(npx tsc:*)",
-      "Bash(wsl -e bash -c \"node --version && npm --version\")"
+      "Bash(wsl -e bash -c \"node --version && npm --version\")",
+      "Read(//c/Users/jenni/abumama-inventory/**)",
+      "Bash(vercel env:*)"
     ]
   }
 }
