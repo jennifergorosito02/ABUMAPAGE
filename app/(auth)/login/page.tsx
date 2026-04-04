@@ -62,7 +62,7 @@ export default function LoginPage() {
           <img
             src="/logo.png"
             alt="ABUMA.MA"
-            style={{ width: '140px', height: '140px', objectFit: 'contain', display: 'block', margin: '0 auto 8px' }}
+            style={{ width: '200px', height: '200px', objectFit: 'contain', display: 'block', margin: '0 auto 8px' }}
           />
           <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
             Sistema de gestión
