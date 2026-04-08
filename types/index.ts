@@ -40,6 +40,8 @@ export interface Producto {
   stock_minimo: number
   proveedor_id: number | null
   imagen_url: string | null
+  familia: string | null
+  en_tienda: boolean
   activo: boolean
   created_at: string
   updated_at: string

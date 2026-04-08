@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { Producto, Proveedor } from '@/types'
 import {
   Plus, Search, Package, TrendingDown, AlertTriangle, X,
-  Pencil, Trash2, ChevronUp, ChevronDown, RefreshCw,
+  Pencil, Trash2, ChevronUp, ChevronDown, RefreshCw, ImagePlus,
 } from 'lucide-react'
 
 
@@ -23,13 +23,15 @@ function StockBadge({ stock, minimo }: { stock: number; minimo: number }) {
 interface FormData {
   nombre: string; linea: string; marca: string; fragancia: string
   sku_display: string; costo: string; precio_venta: string
-  stock: string; stock_minimo: string; proveedor_id: string
+  stock: string; stock_minimo: string; proveedor_id: string; familia: string
+  descripcion: string
 }
 
 const EMPTY_FORM: FormData = {
   nombre: '', linea: '', marca: '', fragancia: '',
   sku_display: '', costo: '', precio_venta: '',
-  stock: '0', stock_minimo: '3', proveedor_id: '',
+  stock: '0', stock_minimo: '3', proveedor_id: '', familia: '',
+  descripcion: '',
 }
 
 export default function InventarioPage() {
@@ -50,6 +52,7 @@ export default function InventarioPage() {
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState('')
   const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [uploadingId, setUploadingId] = useState<number | null>(null)
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -129,10 +132,39 @@ export default function InventarioPage() {
     }
   }
 
+  async function toggleEnTienda(p: Producto) {
+    const nuevo = !p.en_tienda
+    setProductos(prev => prev.map(x => x.id === p.id ? { ...x, en_tienda: nuevo } : x))
+    const { error } = await supabase.from('productos').update({ en_tienda: nuevo }).eq('id', p.id)
+    if (error) {
+      setProductos(prev => prev.map(x => x.id === p.id ? { ...x, en_tienda: p.en_tienda } : x))
+      showToast('Error al actualizar')
+    }
+  }
+
   // Abrir modal
   function abrirNuevo() {
     setEditando(null)
     setForm(EMPTY_FORM)
+    setModalOpen(true)
+  }
+
+  function duplicar(p: Producto) {
+    setEditando(null)
+    setForm({
+      nombre: p.nombre,
+      linea: p.linea ?? '',
+      marca: p.marca ?? '',
+      fragancia: '',
+      sku_display: '',
+      costo: p.costo.toString(),
+      precio_venta: p.precio_venta.toString(),
+      stock: '0',
+      stock_minimo: p.stock_minimo.toString(),
+      proveedor_id: p.proveedor_id?.toString() ?? '',
+      familia: (p as any).familia ?? '',
+      descripcion: (p as any).descripcion ?? '',
+    })
     setModalOpen(true)
   }
 
@@ -149,6 +181,8 @@ export default function InventarioPage() {
       stock: p.stock.toString(),
       stock_minimo: p.stock_minimo.toString(),
       proveedor_id: p.proveedor_id?.toString() ?? '',
+      familia: (p as any).familia ?? '',
+      descripcion: (p as any).descripcion ?? '',
     })
     setModalOpen(true)
   }
@@ -175,6 +209,8 @@ export default function InventarioPage() {
       stock: parseInt(form.stock) || 0,
       stock_minimo: parseInt(form.stock_minimo) || 3,
       proveedor_id: form.proveedor_id ? parseInt(form.proveedor_id) : null,
+      familia: form.familia.trim() || null,
+      descripcion: form.descripcion.trim() || null,
     }
 
     let error
@@ -190,6 +226,20 @@ export default function InventarioPage() {
     showToast(editando ? 'Producto actualizado' : 'Producto creado')
     cerrarModal()
     fetchProductos()
+  }
+
+  // Subir foto
+  async function handleFoto(p: Producto, file: File) {
+    setUploadingId(p.id)
+    const ext = file.name.split('.').pop()
+    const path = `${p.id}.${ext}`
+    const { error: upErr } = await supabase.storage.from('productos').upload(path, file, { upsert: true })
+    if (upErr) { showToast('Error al subir imagen'); setUploadingId(null); return }
+    const { data: { publicUrl } } = supabase.storage.from('productos').getPublicUrl(path)
+    await supabase.from('productos').update({ imagen_url: publicUrl }).eq('id', p.id)
+    setProductos(prev => prev.map(x => x.id === p.id ? { ...x, imagen_url: publicUrl } : x))
+    showToast('Foto subida correctamente')
+    setUploadingId(null)
   }
 
   // Eliminar (soft)
@@ -359,7 +409,42 @@ export default function InventarioPage() {
                       </div>
                     </td>
                     <td>
-                      <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                      <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                        {/* Miniatura foto */}
+                        {p.imagen_url && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={p.imagen_url} alt="" style={{ width: '28px', height: '28px', borderRadius: '4px', objectFit: 'cover', border: '1px solid var(--border)' }} />
+                        )}
+                        {/* Botón subir foto */}
+                        <label title={p.imagen_url ? 'Cambiar foto' : 'Subir foto'} style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          width: '28px', height: '28px', borderRadius: '5px', cursor: 'pointer',
+                          color: uploadingId === p.id ? 'var(--gold)' : 'var(--text-muted)',
+                          background: 'transparent', border: '1px solid transparent',
+                        }}
+                          className="btn-icon"
+                        >
+                          <input type="file" accept="image/*" style={{ display: 'none' }}
+                            onChange={e => { const f = e.target.files?.[0]; if (f) handleFoto(p, f) }}
+                          />
+                          <ImagePlus size={14} />
+                        </label>
+                        {/* Toggle en tienda */}
+                        <button
+                          onClick={() => toggleEnTienda(p)}
+                          title={p.en_tienda ? 'Visible en tienda — click para ocultar' : 'Oculto en tienda — click para mostrar'}
+                          style={{
+                            width: '28px', height: '28px', borderRadius: '5px', cursor: 'pointer', border: 'none',
+                            background: p.en_tienda ? 'rgba(80,200,120,0.15)' : 'rgba(255,255,255,0.04)',
+                            color: p.en_tienda ? 'var(--success)' : 'var(--text-muted)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px',
+                          }}
+                        >
+                          {p.en_tienda ? '🛍️' : '🚫'}
+                        </button>
+                        <button className="btn-icon" onClick={() => duplicar(p)} title="Duplicar producto" style={{ borderRadius: '5px' }}>
+                          <RefreshCw size={14} />
+                        </button>
                         <button className="btn-icon" onClick={() => abrirEditar(p)} title="Editar" style={{ borderRadius: '5px' }}>
                           <Pencil size={14} />
                         </button>
@@ -461,13 +546,38 @@ export default function InventarioPage() {
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '5px' }}>Fragancia</label>
-                    <input value={form.fragancia} onChange={e => setForm(f => ({ ...f, fragancia: e.target.value }))} placeholder="Fragancia o variante" />
+                    <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '5px' }}>Fragancia / Variante</label>
+                    <input value={form.fragancia} onChange={e => setForm(f => ({ ...f, fragancia: e.target.value }))} placeholder="Ej: Lavanda, Rosas..." />
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '5px' }}>SKU</label>
                     <input value={form.sku_display} onChange={e => setForm(f => ({ ...f, sku_display: e.target.value }))} placeholder="Código" />
                   </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '5px' }}>
+                    Familia / Grupo de variantes
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 400, marginLeft: '6px' }}>
+                      — completá para agrupar aromas en la tienda
+                    </span>
+                  </label>
+                  <input
+                    value={form.familia}
+                    onChange={e => setForm(f => ({ ...f, familia: e.target.value }))}
+                    placeholder="Ej: Sahumerios Tibetanos Aromanza x8"
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '5px' }}>Descripción</label>
+                  <textarea
+                    rows={4}
+                    value={form.descripcion}
+                    onChange={e => setForm(f => ({ ...f, descripcion: e.target.value }))}
+                    placeholder="Descripción del producto, ingredientes, uso, beneficios..."
+                    style={{ width: '100%', resize: 'vertical', boxSizing: 'border-box' }}
+                  />
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>

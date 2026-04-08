@@ -41,6 +41,7 @@ export default function VentasPage() {
   const [sesionActiva, setSesionActiva] = useState<SesionCaja | null>(null)
   const [saving, setSaving] = useState(false)
   const [success, setSuccess] = useState<{ numero: string; total: number } | null>(null)
+  const [recargo, setRecargo] = useState(20)
   const searchRef = useRef<HTMLInputElement>(null)
 
   const fetchProductos = useCallback(async () => {
@@ -67,6 +68,8 @@ export default function VentasPage() {
   useEffect(() => {
     fetchProductos()
     fetchSesion()
+    supabase.from('configuracion').select('recargo_tarjeta').eq('id', 1).single()
+      .then(({ data }) => { if (data?.recargo_tarjeta != null) setRecargo(Number(data.recargo_tarjeta)) })
   }, [fetchProductos, fetchSesion])
 
   const filtrados = search
@@ -103,9 +106,16 @@ export default function VentasPage() {
     setCart(prev => prev.filter(i => i.producto.id !== id))
   }
 
+  const pctRecargo = recargo > 0 ? recargo : 20
   const subtotal = cart.reduce((s, i) => s + i.producto.precio_venta * i.cantidad, 0)
-  const descuentoMonto = (subtotal * descuento) / 100
-  const total = subtotal - descuentoMonto
+  const descuentoMonto = Math.round(subtotal * descuento / 100)
+  const recargoMonto = metodo === 'tarjeta' ? Math.round((subtotal - descuentoMonto) * pctRecargo / 100) : 0
+  const total = subtotal - descuentoMonto + recargoMonto
+
+  function precioItem(precio: number, cantidad: number) {
+    const base = metodo === 'tarjeta' ? Math.round(precio * (1 + pctRecargo / 100)) : precio
+    return base * cantidad
+  }
 
   async function confirmarVenta() {
     if (cart.length === 0) return
@@ -131,6 +141,7 @@ export default function VentasPage() {
         descuento: descuentoMonto,
         total,
         metodo_pago: metodo,
+        recargo_tarjeta: recargoMonto > 0 ? recargoMonto : null,
         estado: 'completada',
       })
       .select()
@@ -343,9 +354,16 @@ export default function VentasPage() {
               display: 'flex', flexDirection: 'column', gap: '6px',
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                <span style={{ fontSize: '13px', color: 'var(--text)', lineHeight: 1.3, flex: 1 }}>
-                  {item.producto.nombre}
-                </span>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: '13px', color: 'var(--text)', lineHeight: 1.3 }}>
+                    {item.producto.nombre}
+                  </span>
+                  {item.producto.fragancia && (
+                    <div style={{ fontSize: '11px', color: 'var(--gold)', opacity: 0.7, marginTop: '2px' }}>
+                      {item.producto.fragancia}
+                    </div>
+                  )}
+                </div>
                 <button
                   onClick={() => removeFromCart(item.producto.id)}
                   style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0', flexShrink: 0 }}
@@ -378,9 +396,16 @@ export default function VentasPage() {
                     }}
                   ><Plus size={12} /></button>
                 </div>
-                <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--gold)' }}>
-                  {formatARS(item.producto.precio_venta * item.cantidad)}
-                </span>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--gold)' }}>
+                    {formatARS(Math.round(item.producto.precio_venta * (metodo === 'tarjeta' ? 1 + pctRecargo / 100 : 1)) * item.cantidad)}
+                  </div>
+                  {metodo === 'tarjeta' && (
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                      Ef: {formatARS(item.producto.precio_venta * item.cantidad)}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -402,7 +427,7 @@ export default function VentasPage() {
 
           {/* Subtotal / Total */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-            {descuento > 0 && (
+            {(descuento > 0 || recargoMonto > 0) && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-muted)' }}>
                 <span>Subtotal</span><span>{formatARS(subtotal)}</span>
               </div>
@@ -410,6 +435,11 @@ export default function VentasPage() {
             {descuento > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--danger)' }}>
                 <span>Descuento {descuento}%</span><span>-{formatARS(descuentoMonto)}</span>
+              </div>
+            )}
+            {recargoMonto > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--warning)' }}>
+                <span>Recargo tarjeta {pctRecargo}%</span><span>+{formatARS(recargoMonto)}</span>
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', fontWeight: 700 }}>

@@ -32,6 +32,8 @@ export default function CarritoPage() {
   const [loading, setLoading] = useState(true)
   const [procesando, setProcesando] = useState(false)
   const [errorPago, setErrorPago] = useState('')
+  const [metodoPago, setMetodoPago] = useState<'efectivo' | 'tarjeta'>('efectivo')
+  const [recargo, setRecargo] = useState(20)
 
   async function fetchItems() {
     const carrito = getCarrito()
@@ -51,7 +53,11 @@ export default function CarritoPage() {
     setLoading(false)
   }
 
-  useEffect(() => { fetchItems() }, [])
+  useEffect(() => {
+    fetchItems()
+    supabase.from('configuracion').select('recargo_tarjeta').eq('id', 1).single()
+      .then(({ data }) => { if (data?.recargo_tarjeta != null) setRecargo(Number(data.recargo_tarjeta)) })
+  }, [])
 
   async function handleCheckout() {
     setProcesando(true)
@@ -60,7 +66,7 @@ export default function CarritoPage() {
       const res = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items, back_url: window.location.origin }),
+        body: JSON.stringify({ items, metodo_pago: metodoPago, recargo: metodoPago === 'tarjeta' ? recargo : 0, back_url: window.location.origin }),
       })
       const data = await res.json()
       if (data.error) { setErrorPago(data.error); setProcesando(false); return }
@@ -88,7 +94,14 @@ export default function CarritoPage() {
     setItems(prev => prev.filter(i => i.id !== id))
   }
 
-  const total = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+  const subtotal = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+  const montoRecargo = metodoPago === 'tarjeta' ? Math.round(subtotal * recargo / 100) : 0
+  const total = subtotal + montoRecargo
+
+  // Precio unitario con recargo aplicado
+  function precioConRecargo(precio: number) {
+    return metodoPago === 'tarjeta' ? Math.round(precio * (1 + recargo / 100)) : precio
+  }
 
   if (loading) return <div style={{ textAlign: 'center', padding: '80px', color: 'var(--text-muted)' }}>Cargando...</div>
 
@@ -129,12 +142,17 @@ export default function CarritoPage() {
 
                 {/* Info */}
                 <div style={{ flex: 1 }}>
-                  <Link href={`/tienda/producto/${item.id}`} style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text)', textDecoration: 'none' }}>
+                  <div style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text)' }}>
                     {item.nombre}
-                  </Link>
-                  <div style={{ color: 'var(--gold)', fontWeight: 700, marginTop: '4px' }}>
-                    {formatARS(item.precio_venta)}
                   </div>
+                  <div style={{ color: 'var(--gold)', fontWeight: 700, marginTop: '4px' }}>
+                    {formatARS(precioConRecargo(item.precio_venta))}
+                  </div>
+                  {metodoPago === 'tarjeta' && (
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                      Efectivo: {formatARS(item.precio_venta)}
+                    </div>
+                  )}
                 </div>
 
                 {/* Cantidad */}
@@ -146,7 +164,7 @@ export default function CarritoPage() {
 
                 {/* Subtotal */}
                 <div style={{ minWidth: '90px', textAlign: 'right', fontWeight: 700, fontSize: '15px' }}>
-                  {formatARS(item.precio_venta * item.cantidad)}
+                  {formatARS(precioConRecargo(item.precio_venta) * item.cantidad)}
                 </div>
 
                 {/* Eliminar */}
@@ -166,14 +184,56 @@ export default function CarritoPage() {
           <div className="card" style={{ height: 'fit-content', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <h2 style={{ fontFamily: 'var(--font-cormorant, serif)', fontSize: '22px', fontWeight: 500 }}>Resumen</h2>
 
+            {/* Selector método de pago */}
+            <div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>¿Cómo vas a pagar?</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <button
+                  onClick={() => setMetodoPago('efectivo')}
+                  style={{
+                    padding: '10px 8px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+                    border: `1px solid ${metodoPago === 'efectivo' ? 'var(--gold)' : 'var(--border)'}`,
+                    background: metodoPago === 'efectivo' ? 'rgba(200,169,110,0.12)' : 'transparent',
+                    color: metodoPago === 'efectivo' ? 'var(--gold)' : 'var(--text-secondary)',
+                    cursor: 'pointer', transition: 'all 0.15s', textAlign: 'center',
+                  }}
+                >
+                  💵 Efectivo<br />
+                  <span style={{ fontSize: '10px', fontWeight: 400, opacity: 0.7 }}>o Transferencia</span>
+                </button>
+                <button
+                  onClick={() => setMetodoPago('tarjeta')}
+                  style={{
+                    padding: '10px 8px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+                    border: `1px solid ${metodoPago === 'tarjeta' ? '#7c6fcd' : 'var(--border)'}`,
+                    background: metodoPago === 'tarjeta' ? 'rgba(124,111,205,0.12)' : 'transparent',
+                    color: metodoPago === 'tarjeta' ? '#a89fdf' : 'var(--text-secondary)',
+                    cursor: 'pointer', transition: 'all 0.15s', textAlign: 'center',
+                  }}
+                >
+                  💳 Tarjeta<br />
+                  <span style={{ fontSize: '10px', fontWeight: 400, opacity: 0.7 }}>+{recargo}% recargo</span>
+                </button>
+              </div>
+            </div>
+
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border)' }} />
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {items.map(i => (
                 <div key={i.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-secondary)' }}>
                   <span>{i.nombre} x{i.cantidad}</span>
-                  <span>{formatARS(i.precio_venta * i.cantidad)}</span>
+                  <span>{formatARS(precioConRecargo(i.precio_venta) * i.cantidad)}</span>
                 </div>
               ))}
             </div>
+
+            {metodoPago === 'tarjeta' && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'rgba(168,159,223,0.7)' }}>
+                <span>Recargo tarjeta ({recargo}%)</span>
+                <span>+ {formatARS(montoRecargo)}</span>
+              </div>
+            )}
 
             <hr style={{ border: 'none', borderTop: '1px solid var(--border)' }} />
 
