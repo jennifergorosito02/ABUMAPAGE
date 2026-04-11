@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Save, ImagePlus, Trash2 } from 'lucide-react'
+import { useRequireRole } from '@/hooks/useRequireRole'
 
 interface Config {
   razon_social: string; cuit: string; domicilio: string; telefono: string
@@ -18,6 +19,7 @@ interface ImagenTienda {
 }
 
 export default function ConfiguracionPage() {
+  useRequireRole(['admin'])
   const supabase = createClient()
   const [form, setForm] = useState<Config>(EMPTY)
   const [loading, setLoading] = useState(true)

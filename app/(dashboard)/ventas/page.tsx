@@ -5,7 +5,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Producto, SesionCaja } from '@/types'
 import {
-  Search, Plus, Minus, Trash2, ShoppingCart, X,
+  Search, Plus, Minus, ShoppingCart, X,
   CreditCard, Banknote, Smartphone, CheckCircle2,
 } from 'lucide-react'
 
@@ -69,7 +69,9 @@ export default function VentasPage() {
     fetchProductos()
     fetchSesion()
     supabase.from('configuracion').select('recargo_tarjeta').eq('id', 1).single()
-      .then(({ data }) => { if (data?.recargo_tarjeta != null) setRecargo(Number(data.recargo_tarjeta)) })
+      .then(({ data }: { data: { recargo_tarjeta?: number | null } | null }) => {
+        if (data?.recargo_tarjeta != null) setRecargo(Number(data.recargo_tarjeta))
+      })
   }, [fetchProductos, fetchSesion])
 
   const filtrados = search
@@ -112,11 +114,6 @@ export default function VentasPage() {
   const recargoMonto = metodo === 'tarjeta' ? Math.round((subtotal - descuentoMonto) * pctRecargo / 100) : 0
   const total = subtotal - descuentoMonto + recargoMonto
 
-  function precioItem(precio: number, cantidad: number) {
-    const base = metodo === 'tarjeta' ? Math.round(precio * (1 + pctRecargo / 100)) : precio
-    return base * cantidad
-  }
-
   async function confirmarVenta() {
     if (cart.length === 0) return
     if (!sesionActiva) {
@@ -125,77 +122,47 @@ export default function VentasPage() {
     }
     setSaving(true)
 
-    // Generar número interno
     const fecha = new Date()
     const numero = `V${fecha.getFullYear()}${String(fecha.getMonth()+1).padStart(2,'0')}${String(fecha.getDate()).padStart(2,'0')}-${String(fecha.getTime()).slice(-5)}`
 
-    const { data: venta, error: ventaError } = await supabase
-      .from('ventas')
-      .insert({
-        numero_interno: numero,
-        sesion_caja_id: sesionActiva.id,
-        cliente_nombre: clienteNombre || null,
-        cliente_cuit: clienteCuit || null,
-        tipo_comprobante: facturar ? 'factura_b' : 'ticket',
-        subtotal,
-        descuento: descuentoMonto,
-        total,
-        metodo_pago: metodo,
-        recargo_tarjeta: recargoMonto > 0 ? recargoMonto : null,
-        estado: 'completada',
-      })
-      .select()
-      .single()
+    // precio_unitario refleja el precio real cobrado (con recargo si es tarjeta)
+    const items = cart.map(i => {
+      const precioCobrado = metodo === 'tarjeta'
+        ? Math.round(i.producto.precio_venta * (1 + pctRecargo / 100))
+        : i.producto.precio_venta
+      return {
+        producto_id: i.producto.id,
+        nombre: i.producto.nombre,
+        cantidad: i.cantidad,
+        precio_unitario: precioCobrado,
+        subtotal: precioCobrado * i.cantidad,
+      }
+    })
 
-    if (ventaError || !venta) {
-      alert('Error al registrar la venta')
-      setSaving(false)
+    // Transacción atómica: venta + items + stock + caja en un solo RPC
+    const { error } = await supabase.rpc('registrar_venta', {
+      p_sesion_id: sesionActiva.id,
+      p_numero: numero,
+      p_cliente_nombre: clienteNombre,
+      p_cliente_cuit: clienteCuit,
+      p_tipo_comprobante: facturar ? 'factura_b' : 'ticket',
+      p_subtotal: subtotal,
+      p_descuento: descuentoMonto,
+      p_total: total,
+      p_metodo_pago: metodo,
+      p_recargo_tarjeta: recargoMonto,
+      p_items: items,
+    })
+
+    setSaving(false)
+
+    if (error) {
+      alert(error.message.includes('Stock insuficiente')
+        ? error.message
+        : 'Error al registrar la venta. Intentá nuevamente.')
       return
     }
 
-    // Items + actualizar stock
-    const items = cart.map(i => ({
-      venta_id: venta.id,
-      producto_id: i.producto.id,
-      cantidad: i.cantidad,
-      precio_unitario: i.producto.precio_venta,
-      subtotal: i.producto.precio_venta * i.cantidad,
-    }))
-
-    await supabase.from('venta_items').insert(items)
-
-    // Descontar stock y registrar movimientos
-    for (const item of cart) {
-      const nuevoStock = item.producto.stock - item.cantidad
-      await supabase.from('productos').update({ stock: nuevoStock }).eq('id', item.producto.id)
-      await supabase.from('movimientos_stock').insert({
-        producto_id: item.producto.id,
-        tipo: 'venta',
-        cantidad: item.cantidad,
-        stock_anterior: item.producto.stock,
-        stock_nuevo: nuevoStock,
-        motivo: `Venta ${numero}`,
-        referencia_id: venta.id,
-      })
-    }
-
-    // Actualizar totales de caja
-    const campo = metodo === 'efectivo' ? 'total_efectivo'
-      : metodo === 'transferencia' ? 'total_transferencia'
-      : metodo === 'tarjeta' ? 'total_tarjeta' : 'total_ventas'
-
-    const { error: rpcError } = await supabase.rpc('incrementar_caja', {
-      p_sesion_id: sesionActiva.id,
-      p_total: total,
-      p_campo: campo,
-    })
-    if (rpcError) {
-      await supabase.from('sesiones_caja')
-        .update({ total_ventas: sesionActiva.total_ventas + total })
-        .eq('id', sesionActiva.id)
-    }
-
-    setSaving(false)
     setSuccess({ numero, total })
     setCart([])
     setSearch('')

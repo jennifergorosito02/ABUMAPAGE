@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Empleado } from '@/types'
 import { Plus, X, Pencil } from 'lucide-react'
+import { useRequireRole } from '@/hooks/useRequireRole'
 
 interface FormData { nombre: string; dni: string; telefono: string; email: string; rol: string; salario: string }
 const EMPTY: FormData = { nombre: '', dni: '', telefono: '', email: '', rol: 'empleado', salario: '' }
 
 export default function EmpleadosPage() {
+  useRequireRole(['admin'])
   const supabase = createClient()
   const [empleados, setEmpleados] = useState<Empleado[]>([])
   const [loading, setLoading] = useState(true)

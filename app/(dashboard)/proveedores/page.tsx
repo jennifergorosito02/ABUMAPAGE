@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Proveedor } from '@/types'
 import { Plus, X, Pencil } from 'lucide-react'
+import { useRequireRole } from '@/hooks/useRequireRole'
 
 interface FormData { nombre: string; contacto: string; telefono: string; email: string; cuit: string; direccion: string; notas: string }
 const EMPTY: FormData = { nombre: '', contacto: '', telefono: '', email: '', cuit: '', direccion: '', notas: '' }
 
 export default function ProveedoresPage() {
+  useRequireRole(['admin'])
   const supabase = createClient()
   const [proveedores, setProveedores] = useState<Proveedor[]>([])
   const [loading, setLoading] = useState(true)

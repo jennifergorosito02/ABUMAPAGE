@@ -3,15 +3,16 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { BarChart3, TrendingUp, Package, DollarSign } from 'lucide-react'
+import { useRequireRole } from '@/hooks/useRequireRole'
 
 function formatARS(n: number) {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n)
 }
 
-interface VentaResumen { fecha: string; total: number; cantidad: number }
 interface ProductoTop { nombre: string; total_vendido: number; ingresos: number }
 
 export default function ReportesPage() {
+  useRequireRole(['admin', 'contador'])
   const supabase = createClient()
   const [periodo, setPeriodo] = useState('30')
   const [ventas, setVentas] = useState<{ total: number; cantidad: number; promedio: number }>({ total: 0, cantidad: 0, promedio: 0 })
@@ -30,7 +31,7 @@ export default function ReportesPage() {
         .eq('estado', 'completada')
         .gte('fecha', desde.toISOString())
 
-      const total = ventasData?.reduce((s, v) => s + v.total, 0) ?? 0
+      const total = ventasData?.reduce((s: number, v: { total: number }) => s + v.total, 0) ?? 0
       const cantidad = ventasData?.length ?? 0
       setVentas({ total, cantidad, promedio: cantidad > 0 ? total / cantidad : 0 })
 
