@@ -35,10 +35,11 @@ export default function Sidebar({ open, onClose }: Props) {
 
   useEffect(() => {
     const supabase = createClient()
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    supabase.auth.getUser().then(result => {
+      const user = result.data.user
       if (!user) return
       supabase.from('profiles').select('rol').eq('id', user.id).single()
-        .then(({ data }) => { if (data?.rol) setRol(data.rol as Rol) })
+        .then(profileResult => { if (profileResult.data?.rol) setRol(profileResult.data.rol as Rol) })
     })
   }, [])
 

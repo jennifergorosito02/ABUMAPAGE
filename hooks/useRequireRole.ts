@@ -7,17 +7,21 @@ export function useRequireRole(roles: string[]) {
   const router = useRouter()
   useEffect(() => {
     const supabase = createClient()
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
+    async function check() {
+      const authResult = await supabase.auth.getUser()
+      const user = authResult.data.user
       if (!user) { router.replace('/login'); return }
-      const { data } = await supabase
+      const profileResult = await supabase
         .from('profiles')
         .select('rol')
         .eq('id', user.id)
         .single()
-      if (!data || !roles.includes(data.rol)) {
+      const rol: string | null = profileResult.data?.rol ?? null
+      if (!rol || !roles.includes(rol)) {
         router.replace('/dashboard')
       }
-    })
+    }
+    check()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 }
