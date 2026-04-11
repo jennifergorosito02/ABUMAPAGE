@@ -304,7 +304,7 @@ export default function FamiliaPage() {
                 {formatARS(seleccionada.precio_venta)}
               </div>
               <div style={{ fontSize: '13px', color: 'rgba(240,235,227,0.4)', marginTop: '6px' }}>
-                Tarjeta: {formatARS(Math.round(seleccionada.precio_venta * (1 + recargo / 100)))} <span style={{ fontSize: '11px', color: 'rgba(240,235,227,0.25)' }}>(+{recargo}%)</span>
+                Tarjeta: {formatARS(Math.round(seleccionada.precio_venta * (1 + recargo / 100)))}
               </div>
             </div>
           )}
