@@ -353,9 +353,10 @@ export default function FamiliaPage() {
             <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
               {(() => {
                 const l = (variantes[0]?.linea ?? familia).toLowerCase()
+                if (l.includes('sahumer') || l.includes('incien') || l.includes('fluido') || l.includes('aroma')) return `Elegí tu aroma — ${variantes.length} opciones disponibles`
                 if (l.includes('vela') || l.includes('velón')) return `Elegí tu color — ${variantes.length} opciones`
                 if (l.includes('cristal') || l.includes('piedra')) return `Elegí tu cristal — ${variantes.length} opciones`
-                return `Elegí tu aroma — ${variantes.length} opciones disponibles`
+                return `Elegí tu variante — ${variantes.length} opciones`
               })()}
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -402,7 +403,7 @@ export default function FamiliaPage() {
 
           {seleccionada && seleccionada.stock === 0 && (
             <p style={{ color: 'var(--text-muted)', fontSize: '14px', fontStyle: 'italic' }}>
-              Este aroma no tiene stock. Elegí otro de la lista.
+              Esta variante no tiene stock. Elegí otra de la lista.
             </p>
           )}
 
