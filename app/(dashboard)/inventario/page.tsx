@@ -46,32 +46,49 @@ export default function InventarioPage() {
   const [search, setSearch] = useState('')
   const [filterLinea, setFilterLinea] = useState('')
   const [filterStock, setFilterStock] = useState('')
+  const [page, setPage] = useState(0)
+  const [totalCount, setTotalCount] = useState(0)
+  const PAGE_SIZE = 80
   const [modalOpen, setModalOpen] = useState(false)
   const [editando, setEditando] = useState<Producto | null>(null)
   const [form, setForm] = useState<FormData>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState('')
+  const [toast, setToast] = useState<{ msg: string; tipo: 'ok' | 'error' } | null>(null)
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [uploadingId, setUploadingId] = useState<number | null>(null)
+  const [confirmarEliminar, setConfirmarEliminar] = useState<number | null>(null)
 
-  const showToast = (msg: string) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 3000)
+  const showToast = (msg: string, tipo: 'ok' | 'error' = 'ok') => {
+    setToast({ msg, tipo })
+    setTimeout(() => setToast(null), 3000)
   }
 
-  const fetchProductos = useCallback(async () => {
+  const fetchProductos = useCallback(async (p = 0) => {
     setLoading(true)
-    const { data } = await supabase
+    const from = p * PAGE_SIZE
+    const to = from + PAGE_SIZE - 1
+    const { data, count } = await supabase
       .from('productos')
-      .select('*, proveedores(nombre)')
+      .select('*, proveedores(nombre)', { count: 'exact' })
       .eq('activo', true)
       .order('linea')
       .order('nombre')
+      .range(from, to)
     const prods = data ?? []
     setProductos(prods)
-    const lineasUnicas = [...new Set(prods.map((p: any) => p.linea).filter(Boolean))].sort() as string[]
-    setLineas(lineasUnicas)
+    setTotalCount(count ?? 0)
+    if (p === 0) {
+      // Cargamos líneas solo en la primera página (no cambian con paginación)
+      const { data: todasLineas } = await supabase
+        .from('productos')
+        .select('linea')
+        .eq('activo', true)
+        .not('linea', 'is', null)
+      const lineasUnicas = [...new Set((todasLineas ?? []).map((x: { linea: string }) => x.linea))].sort() as string[]
+      setLineas(lineasUnicas)
+    }
     setLoading(false)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const fetchProveedores = useCallback(async () => {
@@ -80,9 +97,9 @@ export default function InventarioPage() {
   }, [])
 
   useEffect(() => {
-    fetchProductos()
+    fetchProductos(page)
     fetchProveedores()
-  }, [fetchProductos, fetchProveedores])
+  }, [fetchProductos, fetchProveedores, page])
 
   // Filtrar
   const filtered = productos.filter(p => {
@@ -99,11 +116,11 @@ export default function InventarioPage() {
     return matchSearch && matchLinea && matchStock
   })
 
-  // Stats
-  const total = productos.length
+  // Stats — basados en la página actual (aproximados) y el count total
   const sinStock = productos.filter(p => p.stock === 0).length
   const stockBajo = productos.filter(p => p.stock > 0 && p.stock <= p.stock_minimo).length
-  const enStock = total - sinStock - stockBajo
+  const enStock = productos.length - sinStock - stockBajo
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
   // Ajustar stock
   async function ajustarStock(p: Producto, delta: number) {
@@ -128,7 +145,7 @@ export default function InventarioPage() {
     } else {
       // Revertir si falla
       setProductos(prev => prev.map(x => x.id === p.id ? { ...x, stock: p.stock } : x))
-      showToast('Error al actualizar stock')
+      showToast('Error al actualizar stock', 'error')
     }
   }
 
@@ -138,7 +155,7 @@ export default function InventarioPage() {
     const { error } = await supabase.from('productos').update({ en_tienda: nuevo }).eq('id', p.id)
     if (error) {
       setProductos(prev => prev.map(x => x.id === p.id ? { ...x, en_tienda: p.en_tienda } : x))
-      showToast('Error al actualizar')
+      showToast('Error al actualizar', 'error')
     }
   }
 
@@ -221,7 +238,7 @@ export default function InventarioPage() {
     }
 
     setSaving(false)
-    if (error) { showToast('Error al guardar'); return }
+    if (error) { showToast('Error al guardar', 'error'); return }
 
     showToast(editando ? 'Producto actualizado' : 'Producto creado')
     cerrarModal()
@@ -234,7 +251,7 @@ export default function InventarioPage() {
     const ext = file.name.split('.').pop()
     const path = `${p.id}.${ext}`
     const { error: upErr } = await supabase.storage.from('productos').upload(path, file, { upsert: true })
-    if (upErr) { showToast('Error al subir imagen'); setUploadingId(null); return }
+    if (upErr) { showToast('Error al subir imagen', 'error'); setUploadingId(null); return }
     const { data: { publicUrl } } = supabase.storage.from('productos').getPublicUrl(path)
     await supabase.from('productos').update({ imagen_url: publicUrl }).eq('id', p.id)
     setProductos(prev => prev.map(x => x.id === p.id ? { ...x, imagen_url: publicUrl } : x))
@@ -244,11 +261,17 @@ export default function InventarioPage() {
 
   // Eliminar (soft)
   async function handleEliminar(id: number) {
-    if (!confirm('¿Desactivar este producto?')) return
-    setDeletingId(id)
-    await supabase.from('productos').update({ activo: false }).eq('id', id)
-    setProductos(prev => prev.filter(p => p.id !== id))
+    setConfirmarEliminar(id)
+  }
+
+  async function confirmarEliminarProducto() {
+    if (!confirmarEliminar) return
+    setDeletingId(confirmarEliminar)
+    setConfirmarEliminar(null)
+    const { error } = await supabase.from('productos').update({ activo: false }).eq('id', confirmarEliminar)
+    setProductos(prev => prev.filter(p => p.id !== confirmarEliminar))
     setDeletingId(null)
+    if (error) { showToast('Error al desactivar', 'error'); return }
     showToast('Producto desactivado')
   }
 
@@ -259,20 +282,45 @@ export default function InventarioPage() {
       {toast && (
         <div style={{
           position: 'fixed', bottom: '24px', right: '24px',
-          background: 'var(--bg-card)', border: '1px solid var(--border-light)',
+          background: toast.tipo === 'error' ? 'var(--danger-bg)' : 'var(--bg-card)',
+          border: `1px solid ${toast.tipo === 'error' ? '#3a1010' : 'var(--border-light)'}`,
           borderRadius: '8px', padding: '12px 16px',
-          fontSize: '14px', color: 'var(--text)',
+          fontSize: '14px', color: toast.tipo === 'error' ? 'var(--danger)' : 'var(--text)',
           boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
           zIndex: 200, animation: 'fadeIn 0.2s ease',
         }}>
-          {toast}
+          {toast.msg}
+        </div>
+      )}
+
+      {/* Modal confirmar eliminar */}
+      {confirmarEliminar !== null && (
+        <div className="overlay" onClick={e => { if (e.target === e.currentTarget) setConfirmarEliminar(null) }}>
+          <div className="modal fade-in" style={{ maxWidth: '380px' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', fontWeight: 600, fontSize: '16px' }}>
+              Desactivar producto
+            </div>
+            <div style={{ padding: '20px 24px', fontSize: '14px', color: 'var(--text-secondary)' }}>
+              ¿Querés desactivar este producto? No se eliminará de la base de datos y podés reactivarlo después.
+            </div>
+            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" onClick={() => setConfirmarEliminar(null)}>Cancelar</button>
+              <button
+                className="btn btn-sm"
+                style={{ background: 'var(--danger-bg)', color: 'var(--danger)', border: '1px solid #3a1010' }}
+                onClick={confirmarEliminarProducto}
+              >
+                Sí, desactivar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
         {[
-          { label: 'Total productos', value: total, icon: Package, color: 'var(--gold)' },
+          { label: 'Total productos', value: totalCount || productos.length, icon: Package, color: 'var(--gold)' },
           { label: 'En stock', value: enStock, icon: Package, color: 'var(--success)' },
           { label: 'Stock bajo', value: stockBajo, icon: AlertTriangle, color: 'var(--warning)' },
           { label: 'Sin stock', value: sinStock, icon: TrendingDown, color: 'var(--danger)' },
@@ -316,7 +364,7 @@ export default function InventarioPage() {
           <option value="sin">Sin stock</option>
         </select>
 
-        <button onClick={fetchProductos} className="btn btn-ghost btn-sm" title="Actualizar">
+        <button onClick={() => { setPage(0); fetchProductos(0) }} className="btn btn-ghost btn-sm" title="Actualizar">
           <RefreshCw size={14} />
         </button>
 
@@ -465,6 +513,29 @@ export default function InventarioPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Paginación */}
+        {totalPages > 1 && (
+          <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-muted)' }}>
+            <span>
+              {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} de {totalCount} productos
+            </span>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button
+                disabled={page === 0}
+                onClick={() => setPage(p => p - 1)}
+                className="btn btn-ghost btn-sm"
+                style={{ opacity: page === 0 ? 0.4 : 1 }}
+              >← Anterior</button>
+              <button
+                disabled={page + 1 >= totalPages}
+                onClick={() => setPage(p => p + 1)}
+                className="btn btn-ghost btn-sm"
+                style={{ opacity: page + 1 >= totalPages ? 0.4 : 1 }}
+              >Siguiente →</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal */}

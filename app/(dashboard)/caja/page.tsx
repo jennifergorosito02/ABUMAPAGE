@@ -32,10 +32,10 @@ export default function CajaPage() {
   const [saldoContado, setSaldoContado] = useState('')
   const [gastoForm, setGastoForm] = useState({ tipo: 'gasto', concepto: '', monto: '', metodo_pago: 'efectivo' })
   const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState('')
+  const [toast, setToast] = useState<{ msg: string; tipo: 'ok' | 'error' } | null>(null)
 
-  const showToast = (msg: string) => {
-    setToast(msg); setTimeout(() => setToast(''), 3000)
+  const showToast = (msg: string, tipo: 'ok' | 'error' = 'ok') => {
+    setToast({ msg, tipo }); setTimeout(() => setToast(null), 3000)
   }
 
   const fetchData = useCallback(async () => {
@@ -77,12 +77,30 @@ export default function CajaPage() {
 
   async function abrirCaja() {
     setSaving(true)
+    // Verificar que no haya otra sesión abierta
+    const { data: abierta } = await supabase
+      .from('sesiones_caja').select('id').eq('estado', 'abierta').limit(1).single()
+    if (abierta) {
+      setSaving(false)
+      showToast('Ya hay una sesión de caja abierta', 'error')
+      setModalApertura(false)
+      return
+    }
+    // Obtener empleado del usuario logueado
+    const { data: { user } } = await supabase.auth.getUser()
+    let empleadoId: number | null = null
+    if (user) {
+      const { data: emp } = await supabase
+        .from('empleados').select('id').eq('user_id', user.id).single()
+      empleadoId = emp?.id ?? null
+    }
     const { error } = await supabase.from('sesiones_caja').insert({
       saldo_inicial: parseFloat(saldoInicial) || 0,
       estado: 'abierta',
+      empleado_id: empleadoId,
     })
     setSaving(false)
-    if (error) { showToast('Error al abrir caja'); return }
+    if (error) { showToast('Error al abrir caja', 'error'); return }
     setModalApertura(false)
     setSaldoInicial('')
     showToast('Caja abierta')
@@ -98,7 +116,7 @@ export default function CajaPage() {
       saldo_final: parseFloat(saldoContado) || 0,
     }).eq('id', sesion.id)
     setSaving(false)
-    if (error) { showToast('Error al cerrar caja'); return }
+    if (error) { showToast('Error al cerrar caja', 'error'); return }
     setModalCierre(false)
     setSaldoContado('')
     showToast('Caja cerrada')
@@ -117,7 +135,7 @@ export default function CajaPage() {
       fecha: new Date().toISOString().split('T')[0],
     })
     setSaving(false)
-    if (error) { showToast('Error al registrar'); return }
+    if (error) { showToast('Error al registrar', 'error'); return }
     setModalGasto(false)
     setGastoForm({ tipo: 'gasto', concepto: '', monto: '', metodo_pago: 'efectivo' })
     showToast('Movimiento registrado')
@@ -139,10 +157,12 @@ export default function CajaPage() {
       {toast && (
         <div style={{
           position: 'fixed', bottom: '24px', right: '24px',
-          background: 'var(--bg-card)', border: '1px solid var(--border-light)',
+          background: toast.tipo === 'error' ? 'var(--danger-bg)' : 'var(--bg-card)',
+          border: `1px solid ${toast.tipo === 'error' ? '#3a1010' : 'var(--border-light)'}`,
+          color: toast.tipo === 'error' ? 'var(--danger)' : 'var(--text)',
           borderRadius: '8px', padding: '12px 16px', fontSize: '14px',
           boxShadow: '0 4px 20px rgba(0,0,0,0.4)', zIndex: 200,
-        }}>{toast}</div>
+        }}>{toast.msg}</div>
       )}
 
       {/* Header estado caja */}

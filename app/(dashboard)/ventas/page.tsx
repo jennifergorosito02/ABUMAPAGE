@@ -42,6 +42,7 @@ export default function VentasPage() {
   const [saving, setSaving] = useState(false)
   const [success, setSuccess] = useState<{ numero: string; total: number } | null>(null)
   const [recargo, setRecargo] = useState(20)
+  const [mixtoEfectivo, setMixtoEfectivo] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
 
   const fetchProductos = useCallback(async () => {
@@ -151,6 +152,7 @@ export default function VentasPage() {
       p_total: total,
       p_metodo_pago: metodo,
       p_recargo_tarjeta: recargoMonto,
+      p_mixto_efectivo: metodo === 'mixto' ? (parseFloat(mixtoEfectivo) || 0) : null,
       p_items: items,
     })
 
@@ -170,6 +172,7 @@ export default function VentasPage() {
     setClienteNombre('')
     setClienteCuit('')
     setFacturar(false)
+    setMixtoEfectivo('')
     fetchProductos()
     fetchSesion()
   }
@@ -424,7 +427,7 @@ export default function VentasPage() {
                 return (
                   <button
                     key={m.value}
-                    onClick={() => setMetodo(m.value)}
+                    onClick={() => { setMetodo(m.value); setMixtoEfectivo('') }}
                     style={{
                       padding: '7px 8px',
                       border: `1px solid ${metodo === m.value ? 'var(--gold)' : 'var(--border)'}`,
@@ -442,6 +445,26 @@ export default function VentasPage() {
                 )
               })}
             </div>
+            {metodo === 'mixto' && total > 0 && (
+              <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Desglose del pago mixto</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', width: '70px' }}>Efectivo</label>
+                  <input
+                    type="number" min="0" max={total}
+                    value={mixtoEfectivo}
+                    onChange={e => setMixtoEfectivo(e.target.value)}
+                    placeholder="0"
+                    style={{ flex: 1, padding: '5px 8px', fontSize: '13px' }}
+                  />
+                </div>
+                {mixtoEfectivo && parseFloat(mixtoEfectivo) <= total && (
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', paddingLeft: '78px' }}>
+                    Tarjeta / Transferencia: <strong style={{ color: 'var(--gold)' }}>{formatARS(total - parseFloat(mixtoEfectivo))}</strong>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Cliente (opcional) */}
