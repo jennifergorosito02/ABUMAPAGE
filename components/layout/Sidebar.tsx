@@ -7,15 +7,17 @@ import { createClient } from '@/lib/supabase/client'
 import {
   LayoutDashboard, Package, ShoppingCart, Wallet,
   FileText, Users, Truck, Warehouse, BarChart3, Settings, X,
+  ClipboardList,
 } from 'lucide-react'
 
 type Rol = 'admin' | 'empleado' | 'contador'
 
-const NAV: { href: string; label: string; icon: React.ElementType; roles: Rol[] }[] = [
+const NAV: { href: string; label: string; icon: React.ElementType; roles: Rol[]; badge?: boolean }[] = [
   { href: '/dashboard',     label: 'Dashboard',    icon: LayoutDashboard, roles: ['admin', 'empleado', 'contador'] },
   { href: '/inventario',    label: 'Inventario',   icon: Package,         roles: ['admin', 'empleado'] },
   { href: '/ventas',        label: 'Ventas',        icon: ShoppingCart,    roles: ['admin', 'empleado'] },
   { href: '/caja',          label: 'Caja',          icon: Wallet,          roles: ['admin', 'empleado'] },
+  { href: '/conteo',        label: 'Conteo Stock',  icon: ClipboardList,   roles: ['admin', 'empleado'], badge: true },
   { href: '/facturacion',   label: 'Facturación',   icon: FileText,        roles: ['admin', 'contador'] },
   { href: '/empleados',     label: 'Empleados',     icon: Users,           roles: ['admin'] },
   { href: '/proveedores',   label: 'Proveedores',   icon: Truck,           roles: ['admin'] },
@@ -32,6 +34,7 @@ interface Props {
 export default function Sidebar({ open, onClose }: Props) {
   const pathname = usePathname()
   const [rol, setRol] = useState<Rol>('empleado')
+  const [alertaConteo, setAlertaConteo] = useState(0)
 
   useEffect(() => {
     const supabase = createClient()
@@ -41,6 +44,21 @@ export default function Sidebar({ open, onClose }: Props) {
       supabase.from('profiles').select('rol').eq('id', user.id).single()
         .then(profileResult => { if (profileResult.data?.rol) setRol(profileResult.data.rol as Rol) })
     })
+
+    // Contar diferencias sin justificar en conteos de hoy
+    async function fetchAlertas() {
+      const supabase = createClient()
+      const hoy = new Date().toISOString().split('T')[0]
+      const { data } = await supabase
+        .from('conteo_items')
+        .select('id, conteos_stock!inner(fecha)')
+        .not('diferencia', 'is', null)
+        .neq('diferencia', 0)
+        .is('motivo_diferencia', null)
+        .gte('conteos_stock.fecha' as never, hoy)
+      setAlertaConteo(data?.length ?? 0)
+    }
+    fetchAlertas()
   }, [])
 
   const navFiltrado = NAV.filter(item => item.roles.includes(rol))
@@ -90,8 +108,9 @@ export default function Sidebar({ open, onClose }: Props) {
 
         {/* Nav */}
         <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
-          {navFiltrado.map(({ href, label, icon: Icon }) => {
+          {navFiltrado.map(({ href, label, icon: Icon, badge }) => {
             const active = pathname.startsWith(href)
+            const badgeCount = badge && href === '/conteo' ? alertaConteo : 0
             return (
               <Link key={href} href={href} onClick={onClose} style={{
                 display: 'flex', alignItems: 'center', gap: '10px',
@@ -102,7 +121,14 @@ export default function Sidebar({ open, onClose }: Props) {
                 fontSize: '14px', fontWeight: active ? 500 : 400, transition: 'all 0.15s',
               }}>
                 <Icon size={17} strokeWidth={active ? 2 : 1.5} />
-                {label}
+                <span style={{ flex: 1 }}>{label}</span>
+                {badgeCount > 0 && (
+                  <span style={{
+                    background: 'var(--danger)', color: '#fff',
+                    borderRadius: '10px', padding: '1px 6px',
+                    fontSize: '11px', fontWeight: 700, lineHeight: 1.4,
+                  }}>{badgeCount}</span>
+                )}
               </Link>
             )
           })}
