@@ -52,7 +52,11 @@ export default function FamiliaPage() {
   const [recargo, setRecargo] = useState(20)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => { if (data.user) setEsAdmin(true) })
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user) return
+      const { data: profile } = await supabase.from('profiles').select('rol').eq('id', data.user.id).single()
+      setEsAdmin(profile?.rol === 'admin')
+    })
     supabase.from('configuracion').select('recargo_tarjeta').eq('id', 1).single()
       .then(({ data }) => { if (data?.recargo_tarjeta != null) setRecargo(Number(data.recargo_tarjeta)) })
   }, [])

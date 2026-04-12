@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   LayoutDashboard, Package, ShoppingCart, Wallet,
   FileText, Users, Truck, Warehouse, BarChart3, Settings, X,
-  ClipboardList,
+  ClipboardList, ShoppingBag,
 } from 'lucide-react'
 
 type Rol = 'admin' | 'empleado' | 'contador'
@@ -18,6 +18,7 @@ const NAV: { href: string; label: string; icon: React.ElementType; roles: Rol[];
   { href: '/ventas',        label: 'Ventas',        icon: ShoppingCart,    roles: ['admin', 'empleado'] },
   { href: '/caja',          label: 'Caja',          icon: Wallet,          roles: ['admin', 'empleado'] },
   { href: '/conteo',        label: 'Conteo Stock',  icon: ClipboardList,   roles: ['admin', 'empleado'], badge: true },
+  { href: '/pedidos',       label: 'Pedidos Online', icon: ShoppingBag,     roles: ['admin', 'empleado'], badge: false },
   { href: '/facturacion',   label: 'Facturación',   icon: FileText,        roles: ['admin', 'contador'] },
   { href: '/empleados',     label: 'Empleados',     icon: Users,           roles: ['admin'] },
   { href: '/proveedores',   label: 'Proveedores',   icon: Truck,           roles: ['admin'] },
