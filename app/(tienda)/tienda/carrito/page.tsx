@@ -11,6 +11,8 @@ interface ItemCarrito {
   precio_venta: number
   cantidad: number
   stock: number
+  imagen_url: string | null
+  familia: string | null
 }
 
 interface Cliente {
@@ -41,7 +43,6 @@ export default function CarritoPage() {
   const [metodoPago, setMetodoPago] = useState<'efectivo' | 'tarjeta'>('efectivo')
   const [recargo, setRecargo] = useState(20)
   const [cliente, setCliente] = useState<Cliente>({ nombre: '', email: '', telefono: '' })
-  const [paso, setPaso] = useState<'carrito' | 'datos'>('carrito')
 
   async function fetchItems() {
     const carrito = getCarrito()
@@ -50,7 +51,7 @@ export default function CarritoPage() {
 
     const { data } = await supabase
       .from('productos')
-      .select('id, nombre, precio_venta, stock')
+      .select('id, nombre, precio_venta, stock, imagen_url, familia')
       .in('id', ids)
       .eq('activo', true)
 
@@ -62,9 +63,12 @@ export default function CarritoPage() {
   }
 
   useEffect(() => {
-    fetchItems()
-    supabase.from('configuracion').select('recargo_tarjeta').eq('id', 1).single()
-      .then(({ data }) => { if (data?.recargo_tarjeta != null) setRecargo(Number(data.recargo_tarjeta)) })
+    async function init() {
+      await fetchItems()
+      const result = await supabase.from('configuracion').select('recargo_tarjeta').eq('id', 1).single()
+      if (result.data?.recargo_tarjeta != null) setRecargo(Number(result.data.recargo_tarjeta))
+    }
+    init()
   }, [])
 
   async function handleCheckout() {
@@ -143,14 +147,12 @@ export default function CarritoPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {items.map(item => (
               <div key={item.id} className="card" style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                <div style={{
-                  width: '64px', height: '64px', flexShrink: 0, borderRadius: '8px',
-                  background: 'var(--bg-card-hover)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold-dim)" strokeWidth="1.5">
-                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-                  </svg>
+                <div style={{ width: '64px', height: '64px', flexShrink: 0, borderRadius: '8px', overflow: 'hidden', background: 'var(--bg-card-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {item.imagen_url
+                    // eslint-disable-next-line @next/next/no-img-element
+                    ? <img src={item.imagen_url} alt={item.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gold-dim)" strokeWidth="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                  }
                 </div>
 
                 <div style={{ flex: 1 }}>

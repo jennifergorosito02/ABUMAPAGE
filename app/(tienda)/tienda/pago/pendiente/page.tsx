@@ -1,9 +1,15 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
+import { useEffect } from 'react'
 import Link from 'next/link'
 
 export default function PagoPendientePage() {
+  useEffect(() => {
+    localStorage.removeItem('carrito')
+    window.dispatchEvent(new Event('carritoUpdate'))
+  }, [])
+
   return (
     <div style={{ textAlign: 'center', padding: '80px 20px' }}>
       <div style={{

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 interface ContactoConfig {
@@ -15,9 +15,27 @@ export default function TiendaLayout({ children }: { children: React.ReactNode }
   const [productosOpen, setProductosOpen] = useState(false)
   const [contacto, setContacto] = useState<ContactoConfig>({ wsp: null, instagram: null, direccion_tienda: null })
 
+  const [carritoCount, setCarritoCount] = useState(0)
+
+  const actualizarCarrito = useCallback(() => {
+    try {
+      const c = JSON.parse(localStorage.getItem('carrito') ?? '{}')
+      setCarritoCount(Object.values(c as Record<string, number>).reduce((s, v) => s + v, 0))
+    } catch { setCarritoCount(0) }
+  }, [])
+
   useEffect(() => {
-    supabase.from('configuracion').select('wsp, instagram, direccion_tienda').eq('id', 1).single()
-      .then(({ data }) => { if (data) setContacto(data) })
+    actualizarCarrito()
+    window.addEventListener('carritoUpdate', actualizarCarrito)
+    return () => window.removeEventListener('carritoUpdate', actualizarCarrito)
+  }, [actualizarCarrito])
+
+  useEffect(() => {
+    async function cargarContacto() {
+      const result = await supabase.from('configuracion').select('wsp, instagram, direccion_tienda').eq('id', 1).single()
+      if (result.data) setContacto(result.data)
+    }
+    cargarContacto()
   }, [])
 
   // Cerrar menú al navegar
@@ -29,8 +47,6 @@ export default function TiendaLayout({ children }: { children: React.ReactNode }
 
   const navLinks = [
     { label: 'Inicio', href: '/tienda', external: false },
-    { label: 'Nosotras', href: '/tienda/nosotras', external: false },
-    { label: 'Promos', href: '/tienda/promos', external: false },
     { label: 'Marcas', href: '#marcas', external: false },
     { label: 'Contacto', href: '/tienda/contacto', external: false },
   ]
@@ -85,7 +101,7 @@ export default function TiendaLayout({ children }: { children: React.ReactNode }
                 <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
                 <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
               </svg>
-              <span id="carrito-count">Carrito</span>
+              <span>Carrito{carritoCount > 0 ? ` (${carritoCount})` : ''}</span>
             </a>
 
             {/* Hamburguesa */}
@@ -230,8 +246,7 @@ export default function TiendaLayout({ children }: { children: React.ReactNode }
             <div style={{ fontSize: '11px', color: 'rgba(200,169,110,0.6)', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: '16px' }}>Navegación</div>
             {[
               { label: 'Tienda', href: '/tienda' },
-              { label: 'Nosotras', href: '/tienda/nosotras' },
-              { label: 'Promos', href: '/tienda/promos' },
+              { label: 'Contacto', href: '/tienda/contacto' },
               { label: 'Carrito', href: '/tienda/carrito' },
             ].map(l => (
               <a key={l.label} href={l.href} style={{ display: 'block', fontSize: '14px', color: 'rgba(240,235,227,0.5)', textDecoration: 'none', marginBottom: '8px', transition: 'color 0.2s' }}
@@ -265,7 +280,7 @@ export default function TiendaLayout({ children }: { children: React.ReactNode }
           </div>
         </div>
         <div style={{ maxWidth: '1280px', margin: '40px auto 0', paddingTop: '24px', borderTop: '1px solid rgba(200,169,110,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: 'rgba(240,235,227,0.25)' }}>
-          <span>© 2025 ABUMA.MA. Todos los derechos reservados.</span>
+          <span>© 2026 ABUMA.MA. Todos los derechos reservados.</span>
           <span>Tienda Holística · Argentina</span>
         </div>
       </footer>
