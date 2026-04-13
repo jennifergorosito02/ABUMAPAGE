@@ -52,13 +52,17 @@ export default function FamiliaPage() {
   const [recargo, setRecargo] = useState(20)
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
-      if (!data.user) return
-      const { data: profile } = await supabase.from('profiles').select('rol').eq('id', data.user.id).single()
-      setEsAdmin(profile?.rol === 'admin')
-    })
-    supabase.from('configuracion').select('recargo_tarjeta').eq('id', 1).single()
-      .then(({ data }) => { if (data?.recargo_tarjeta != null) setRecargo(Number(data.recargo_tarjeta)) })
+    async function init() {
+      const authResult = await supabase.auth.getUser()
+      const user = authResult.data.user
+      if (user) {
+        const profileResult = await supabase.from('profiles').select('rol').eq('id', user.id).single()
+        setEsAdmin(profileResult.data?.rol === 'admin')
+      }
+      const configResult = await supabase.from('configuracion').select('recargo_tarjeta').eq('id', 1).single()
+      if (configResult.data?.recargo_tarjeta != null) setRecargo(Number(configResult.data.recargo_tarjeta))
+    }
+    init()
   }, [])
 
   // Cargar fotos del storage para esta familia
@@ -308,7 +312,7 @@ export default function FamiliaPage() {
                 {formatARS(seleccionada.precio_venta)}
               </div>
               <div style={{ fontSize: '13px', color: 'rgba(240,235,227,0.4)', marginTop: '6px' }}>
-                Tarjeta: {formatARS(Math.round(seleccionada.precio_venta * (1 + recargo / 100)))}
+                Crédito: {formatARS(Math.round(seleccionada.precio_venta * (1 + recargo / 100)))}
               </div>
             </div>
           )}

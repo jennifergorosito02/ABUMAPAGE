@@ -8,19 +8,33 @@ function supabaseAdmin() {
   )
 }
 
+async function notificarWhatsApp(mensaje: string) {
+  const numeros = [
+    { phone: '541127178564', apikey: process.env.WA_APIKEY_1 },
+    { phone: '541164595509', apikey: process.env.WA_APIKEY_2 },
+  ]
+  for (const { phone, apikey } of numeros) {
+    if (!apikey) continue
+    try {
+      await fetch(
+        `https://api.callmebot.com/whatsapp.php?phone=${phone}&text=${encodeURIComponent(mensaje)}&apikey=${apikey}`
+      )
+    } catch (e) {
+      console.error(`Error notificando ${phone}:`, e)
+    }
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
 
-    // MP envía distintos tipos de notificaciones — solo nos importa "payment"
-    if (body.type !== 'payment') {
-      return NextResponse.json({ ok: true })
-    }
+    if (body.type !== 'payment') return NextResponse.json({ ok: true })
 
     const paymentId = body.data?.id
     if (!paymentId) return NextResponse.json({ ok: true })
 
-    // Consultar el pago a la API de MP para verificar estado
+    // Verificar estado del pago con MP
     const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
       headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` },
     })
@@ -32,7 +46,7 @@ export async function POST(request: NextRequest) {
 
     const payment = await mpRes.json()
     const pedidoId: string = payment.external_reference
-    const estado: string = payment.status // 'approved' | 'pending' | 'rejected' | ...
+    const estado: string = payment.status
 
     if (!pedidoId) {
       console.error('Webhook sin external_reference:', payment.id)
@@ -41,12 +55,11 @@ export async function POST(request: NextRequest) {
 
     const supabase = supabaseAdmin()
 
-    // Solo procesar si el pago fue aprobado
     if (estado === 'approved') {
-      // Verificar que no hayamos procesado ya este pedido
+      // Traer pedido completo con items y datos del cliente
       const { data: pedido } = await supabase
         .from('pedidos')
-        .select('id, estado, pedido_items(producto_id, cantidad)')
+        .select('id, estado, cliente_nombre, cliente_telefono, total, metodo_pago, pedido_items(nombre, cantidad, precio_unitario)')
         .eq('id', pedidoId)
         .single()
 
@@ -55,29 +68,51 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: true })
       }
 
-      if (pedido.estado === 'aprobado') {
-        // Ya procesado (MP puede reenviar webhooks)
-        return NextResponse.json({ ok: true })
-      }
+      if (pedido.estado === 'aprobado') return NextResponse.json({ ok: true })
 
-      // Descontar stock de cada producto (función atómica en DB)
-      const items: Array<{ producto_id: number; cantidad: number }> = pedido.pedido_items as any
-      for (const item of items) {
+      // Descontar stock
+      const items: Array<{ nombre: string; cantidad: number; precio_unitario: number; producto_id?: number }> = pedido.pedido_items as any
+
+      // Necesitamos producto_id para descontar — re-fetch con producto_id
+      const { data: itemsConId } = await supabase
+        .from('pedido_items')
+        .select('producto_id, cantidad')
+        .eq('pedido_id', pedidoId)
+
+      for (const item of itemsConId ?? []) {
         const { error } = await supabase.rpc('descontar_stock_online', {
           p_producto_id: item.producto_id,
           p_cantidad: item.cantidad,
         })
-        if (error) {
-          console.error(`Stock insuficiente para producto ${item.producto_id}:`, error.message)
-          // Registrar pero seguir — el admin verá el pedido y resolverá
-        }
+        if (error) console.error(`Stock insuficiente producto ${item.producto_id}:`, error.message)
       }
 
-      // Marcar pedido como aprobado
+      // Marcar como aprobado
       await supabase
         .from('pedidos')
         .update({ estado: 'aprobado', mp_payment_id: String(paymentId) })
         .eq('id', pedidoId)
+
+      // Armar mensaje de WhatsApp
+      const formatARS = (n: number) => `$${Math.round(n).toLocaleString('es-AR')}`
+      const listaItems = items
+        .map(i => `  • ${i.nombre} x${i.cantidad} — ${formatARS(i.precio_unitario * i.cantidad)}`)
+        .join('\n')
+
+      const mensaje = [
+        '🛍️ *NUEVO PEDIDO ABUMA.MA*',
+        '',
+        `👤 Cliente: ${pedido.cliente_nombre ?? 'Sin nombre'}`,
+        pedido.cliente_telefono ? `📱 WhatsApp: ${pedido.cliente_telefono}` : '',
+        `💳 Pago: ${pedido.metodo_pago === 'tarjeta' ? 'Tarjeta' : 'Efectivo/Transferencia'}`,
+        '',
+        '*Productos:*',
+        listaItems,
+        '',
+        `💰 *Total: ${formatARS(pedido.total)}*`,
+      ].filter(Boolean).join('\n')
+
+      await notificarWhatsApp(mensaje)
 
     } else if (estado === 'rejected' || estado === 'cancelled') {
       await supabase
@@ -93,7 +128,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// MP también hace GET para verificar la URL
 export async function GET() {
   return NextResponse.json({ ok: true })
 }
