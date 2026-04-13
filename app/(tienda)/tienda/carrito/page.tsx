@@ -217,8 +217,7 @@ export default function CarritoPage() {
                     color: metodoPago === 'tarjeta' ? '#a89fdf' : 'var(--text-secondary)',
                     cursor: 'pointer', transition: 'all 0.15s', textAlign: 'center',
                   }}>
-                    💳 Crédito<br />
-                    <span style={{ fontSize: '10px', fontWeight: 400, opacity: 0.7 }}>+{recargo}% recargo</span>
+                    💳 Crédito
                   </button>
                 </div>
               </div>
