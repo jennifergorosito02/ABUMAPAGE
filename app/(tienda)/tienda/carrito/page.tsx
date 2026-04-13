@@ -233,13 +233,6 @@ export default function CarritoPage() {
                 ))}
               </div>
 
-              {metodoPago === 'tarjeta' && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'rgba(168,159,223,0.7)' }}>
-                  <span>Recargo tarjeta ({recargo}%)</span>
-                  <span>+ {formatARS(montoRecargo)}</span>
-                </div>
-              )}
-
               <hr style={{ border: 'none', borderTop: '1px solid var(--border)' }} />
 
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', fontWeight: 700 }}>
