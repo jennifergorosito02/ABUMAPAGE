@@ -115,22 +115,27 @@ export default function TiendaPage() {
 
   // Cargar archivos del bucket 'tienda' — separa videos de fotos
   useEffect(() => {
-    supabase.storage.from('tienda').list('', { limit: 30, sortBy: { column: 'created_at', order: 'asc' } })
-      .then(({ data }) => {
-        if (!data) return
-        const archivos = data.filter((f: { name: string }) => f.name !== '.emptyFolderPlaceholder')
-        const videos = archivos.filter((f: { name: string }) => f.name.endsWith('.mp4') || f.name.endsWith('.webm') || f.name.endsWith('.mov'))
-        const fotos = archivos.filter((f: { name: string }) => !f.name.endsWith('.mp4') && !f.name.endsWith('.webm') && !f.name.endsWith('.mov'))
-        if (videos.length > 0) {
-          setHeroVideo(supabase.storage.from('tienda').getPublicUrl(videos[0].name).data.publicUrl)
-        }
-        const urls = fotos.map((f: { name: string }) => supabase.storage.from('tienda').getPublicUrl(f.name).data.publicUrl)
-        if (urls.length > 0) setHeroFotos(urls)
-      })
+    async function cargarHero() {
+      const result = await supabase.storage.from('tienda').list('', { limit: 30, sortBy: { column: 'created_at', order: 'asc' } })
+      if (!result.data) return
+      const archivos = result.data.filter((f: { name: string }) => f.name !== '.emptyFolderPlaceholder')
+      const videos = archivos.filter((f: { name: string }) => f.name.endsWith('.mp4') || f.name.endsWith('.webm') || f.name.endsWith('.mov'))
+      const fotos = archivos.filter((f: { name: string }) => !f.name.endsWith('.mp4') && !f.name.endsWith('.webm') && !f.name.endsWith('.mov'))
+      if (videos.length > 0) {
+        setHeroVideo(supabase.storage.from('tienda').getPublicUrl(videos[0].name).data.publicUrl)
+      }
+      const urls = fotos.map((f: { name: string }) => supabase.storage.from('tienda').getPublicUrl(f.name).data.publicUrl)
+      if (urls.length > 0) setHeroFotos(urls)
+    }
+    cargarHero()
   }, [])
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => { if (data.user) setEsAdmin(true) })
+    async function checkAdmin() {
+      const authResult = await supabase.auth.getUser()
+      if (authResult.data.user) setEsAdmin(true)
+    }
+    checkAdmin()
   }, [])
 
   // Cargar logos de marcas desde productos/marca-logos/
@@ -149,8 +154,11 @@ export default function TiendaPage() {
   useEffect(() => { fetchMarcaLogos() }, [])
 
   useEffect(() => {
-    supabase.from('configuracion').select('recargo_tarjeta').eq('id', 1).single()
-      .then(({ data }) => { if (data?.recargo_tarjeta != null) setRecargo(Number(data.recargo_tarjeta)) })
+    async function cargarRecargo() {
+      const result = await supabase.from('configuracion').select('recargo_tarjeta').eq('id', 1).single()
+      if (result.data?.recargo_tarjeta != null) setRecargo(Number(result.data.recargo_tarjeta))
+    }
+    cargarRecargo()
   }, [])
 
   function slugMarca(marca: string) {
@@ -206,7 +214,6 @@ export default function TiendaPage() {
         .from('productos')
         .select('id, nombre, linea, marca, fragancia, precio_venta, stock, imagen_url, familia')
         .eq('activo', true)
-        .eq('en_tienda', true)
         .order('linea').order('nombre')
       if (err) { setError(err.message); setLoading(false); return }
       setProductos(data ?? [])
