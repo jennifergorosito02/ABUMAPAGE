@@ -43,6 +43,15 @@ export default function CarritoPage() {
   const [metodoPago, setMetodoPago] = useState<'efectivo' | 'tarjeta'>('efectivo')
   const [recargo, setRecargo] = useState(20)
   const [cliente, setCliente] = useState<Cliente>({ nombre: '', email: '', telefono: '' })
+  const [tipoEnvio, setTipoEnvio] = useState<'retiro' | 'domicilio'>('retiro')
+  const [direccionEnvio, setDireccionEnvio] = useState('')
+  const [costoEnvio, setCostoEnvio] = useState(12000)
+  const [direccionRetiro, setDireccionRetiro] = useState('')
+
+  // Al elegir domicilio, forzar pago con tarjeta
+  useEffect(() => {
+    if (tipoEnvio === 'domicilio') setMetodoPago('tarjeta')
+  }, [tipoEnvio])
 
   async function fetchItems() {
     const carrito = getCarrito()
@@ -65,14 +74,29 @@ export default function CarritoPage() {
   useEffect(() => {
     async function init() {
       await fetchItems()
-      const result = await supabase.from('configuracion').select('recargo_tarjeta').eq('id', 1).single()
-      if (result.data?.recargo_tarjeta != null) setRecargo(Number(result.data.recargo_tarjeta))
+      const result = await supabase.from('configuracion').select('recargo_tarjeta, costo_envio, direccion_retiro').eq('id', 1).single()
+      if (result.data) {
+        if (result.data.recargo_tarjeta != null) setRecargo(Number(result.data.recargo_tarjeta))
+        if (result.data.costo_envio != null) setCostoEnvio(Number(result.data.costo_envio))
+        if (result.data.direccion_retiro) setDireccionRetiro(result.data.direccion_retiro)
+      }
     }
     init()
   }, [])
 
   async function handleCheckout() {
     if (!cliente.nombre.trim()) { setErrorPago('Ingresá tu nombre para continuar'); return }
+    if (tipoEnvio === 'domicilio' && !direccionEnvio.trim()) { setErrorPago('Ingresá tu dirección de envío'); return }
+
+    // Anti-duplicado: si ya hay un pedido en curso de los últimos 30 min, reusar
+    try {
+      const enCurso = JSON.parse(localStorage.getItem('pedidoEnCurso') ?? 'null')
+      if (enCurso?.initPoint && Date.now() - enCurso.timestamp < 30 * 60 * 1000) {
+        window.location.href = enCurso.initPoint
+        return
+      }
+    } catch { /* ignorar */ }
+
     setProcesando(true)
     setErrorPago('')
     try {
@@ -85,10 +109,15 @@ export default function CarritoPage() {
           recargo: metodoPago === 'tarjeta' ? recargo : 0,
           back_url: window.location.origin,
           cliente,
+          tipo_envio: tipoEnvio,
+          direccion_envio: tipoEnvio === 'domicilio' ? direccionEnvio : null,
+          costo_envio: tipoEnvio === 'domicilio' ? costoEnvio : 0,
         }),
       })
       const data = await res.json()
       if (data.error) { setErrorPago(data.error); setProcesando(false); return }
+      // Guardar en localStorage para evitar duplicados
+      localStorage.setItem('pedidoEnCurso', JSON.stringify({ initPoint: data.init_point, timestamp: Date.now() }))
       window.location.href = data.init_point
     } catch {
       setErrorPago('Error al conectar con Mercado Pago')
@@ -115,7 +144,8 @@ export default function CarritoPage() {
 
   const subtotal = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
   const montoRecargo = metodoPago === 'tarjeta' ? Math.round(subtotal * recargo / 100) : 0
-  const total = subtotal + montoRecargo
+  const gastoEnvio = tipoEnvio === 'domicilio' ? costoEnvio : 0
+  const total = subtotal + montoRecargo + gastoEnvio
 
   function precioConRecargo(precio: number) {
     return metodoPago === 'tarjeta' ? Math.round(precio * (1 + recargo / 100)) : precio
@@ -199,27 +229,95 @@ export default function CarritoPage() {
               {/* Método de pago */}
               <div>
                 <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>¿Cómo vas a pagar?</div>
+                {tipoEnvio === 'domicilio' ? (
+                  <div>
+                    <div style={{
+                      padding: '10px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+                      border: '1px solid #7c6fcd', background: 'rgba(124,111,205,0.12)',
+                      color: '#a89fdf', textAlign: 'center',
+                    }}>
+                      💳 Pago online con Mercado Pago
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px', textAlign: 'center' }}>
+                      El envío a domicilio requiere pago online previo al despacho.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <button onClick={() => setMetodoPago('efectivo')} style={{
+                      padding: '10px 8px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+                      border: `1px solid ${metodoPago === 'efectivo' ? 'var(--gold)' : 'var(--border)'}`,
+                      background: metodoPago === 'efectivo' ? 'rgba(200,169,110,0.12)' : 'transparent',
+                      color: metodoPago === 'efectivo' ? 'var(--gold)' : 'var(--text-secondary)',
+                      cursor: 'pointer', transition: 'all 0.15s', textAlign: 'center',
+                    }}>
+                      🏦 Débito / Transferencia
+                    </button>
+                    <button onClick={() => setMetodoPago('tarjeta')} style={{
+                      padding: '10px 8px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+                      border: `1px solid ${metodoPago === 'tarjeta' ? '#7c6fcd' : 'var(--border)'}`,
+                      background: metodoPago === 'tarjeta' ? 'rgba(124,111,205,0.12)' : 'transparent',
+                      color: metodoPago === 'tarjeta' ? '#a89fdf' : 'var(--text-secondary)',
+                      cursor: 'pointer', transition: 'all 0.15s', textAlign: 'center',
+                    }}>
+                      💳 Crédito
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <hr style={{ border: 'none', borderTop: '1px solid var(--border)' }} />
+
+              {/* Envío */}
+              <div>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>¿Cómo recibís tu pedido?</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  <button onClick={() => setMetodoPago('efectivo')} style={{
+                  <button onClick={() => setTipoEnvio('retiro')} style={{
                     padding: '10px 8px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
-                    border: `1px solid ${metodoPago === 'efectivo' ? 'var(--gold)' : 'var(--border)'}`,
-                    background: metodoPago === 'efectivo' ? 'rgba(200,169,110,0.12)' : 'transparent',
-                    color: metodoPago === 'efectivo' ? 'var(--gold)' : 'var(--text-secondary)',
+                    border: `1px solid ${tipoEnvio === 'retiro' ? 'var(--gold)' : 'var(--border)'}`,
+                    background: tipoEnvio === 'retiro' ? 'rgba(200,169,110,0.12)' : 'transparent',
+                    color: tipoEnvio === 'retiro' ? 'var(--gold)' : 'var(--text-secondary)',
                     cursor: 'pointer', transition: 'all 0.15s', textAlign: 'center',
                   }}>
-                    💵 Efectivo / Débito<br />
-                    <span style={{ fontSize: '10px', fontWeight: 400, opacity: 0.7 }}>o Transferencia</span>
+                    🏪 Retiro en local<br />
+                    <span style={{ fontSize: '10px', fontWeight: 400, opacity: 0.7 }}>Gratis</span>
                   </button>
-                  <button onClick={() => setMetodoPago('tarjeta')} style={{
+                  <button onClick={() => setTipoEnvio('domicilio')} style={{
                     padding: '10px 8px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
-                    border: `1px solid ${metodoPago === 'tarjeta' ? '#7c6fcd' : 'var(--border)'}`,
-                    background: metodoPago === 'tarjeta' ? 'rgba(124,111,205,0.12)' : 'transparent',
-                    color: metodoPago === 'tarjeta' ? '#a89fdf' : 'var(--text-secondary)',
+                    border: `1px solid ${tipoEnvio === 'domicilio' ? 'var(--gold)' : 'var(--border)'}`,
+                    background: tipoEnvio === 'domicilio' ? 'rgba(200,169,110,0.12)' : 'transparent',
+                    color: tipoEnvio === 'domicilio' ? 'var(--gold)' : 'var(--text-secondary)',
                     cursor: 'pointer', transition: 'all 0.15s', textAlign: 'center',
                   }}>
-                    💳 Crédito
+                    📦 Envío a domicilio<br />
+                    <span style={{ fontSize: '10px', fontWeight: 400, opacity: 0.7 }}>{formatARS(costoEnvio)}</span>
                   </button>
                 </div>
+
+                {tipoEnvio === 'retiro' && direccionRetiro && (
+                  <div style={{ marginTop: '8px', padding: '10px 12px', borderRadius: '7px', background: 'rgba(200,169,110,0.06)', border: '1px solid rgba(200,169,110,0.15)', fontSize: '12px', color: 'var(--text-muted)' }}>
+                    📍 {direccionRetiro}
+                  </div>
+                )}
+
+                {tipoEnvio === 'domicilio' && (
+                  <div style={{ marginTop: '8px' }}>
+                    <label style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: '5px' }}>
+                      Dirección de entrega *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Calle, número, piso, ciudad, provincia"
+                      value={direccionEnvio}
+                      onChange={e => setDireccionEnvio(e.target.value)}
+                      style={{
+                        width: '100%', padding: '9px 12px', borderRadius: '7px', boxSizing: 'border-box',
+                        background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(200,169,110,0.2)',
+                        color: '#f0ebe3', fontSize: '14px', outline: 'none',
+                      }}
+                    />
+                  </div>
+                )}
               </div>
 
               <hr style={{ border: 'none', borderTop: '1px solid var(--border)' }} />
@@ -231,6 +329,12 @@ export default function CarritoPage() {
                     <span>{formatARS(precioConRecargo(i.precio_venta) * i.cantidad)}</span>
                   </div>
                 ))}
+                {tipoEnvio === 'domicilio' && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                    <span>Envío OCA</span>
+                    <span>{formatARS(costoEnvio)}</span>
+                  </div>
+                )}
               </div>
 
               <hr style={{ border: 'none', borderTop: '1px solid var(--border)' }} />

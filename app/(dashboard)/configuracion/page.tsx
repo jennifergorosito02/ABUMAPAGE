@@ -10,8 +10,9 @@ interface Config {
   email: string; afip_punto_venta: string; afip_ambiente: string
   wsp: string; instagram: string; direccion_tienda: string
   texto_nosotras: string; texto_promos: string; recargo_tarjeta: string
+  costo_envio: string; direccion_retiro: string
 }
-const EMPTY: Config = { razon_social: '', cuit: '', domicilio: '', telefono: '', email: '', afip_punto_venta: '1', afip_ambiente: 'homologacion', wsp: '', instagram: '', direccion_tienda: '', texto_nosotras: '', texto_promos: '', recargo_tarjeta: '20' }
+const EMPTY: Config = { razon_social: '', cuit: '', domicilio: '', telefono: '', email: '', afip_punto_venta: '1', afip_ambiente: 'homologacion', wsp: '', instagram: '', direccion_tienda: '', texto_nosotras: '', texto_promos: '', recargo_tarjeta: '20', costo_envio: '12000', direccion_retiro: 'Méndez 151, Glew' }
 
 interface ImagenTienda {
   name: string
@@ -55,6 +56,8 @@ export default function ConfiguracionPage() {
         texto_nosotras: data.texto_nosotras ?? '',
         texto_promos: data.texto_promos ?? '',
         recargo_tarjeta: data.recargo_tarjeta?.toString() ?? '20',
+        costo_envio: data.costo_envio?.toString() ?? '12000',
+        direccion_retiro: data.direccion_retiro ?? 'Méndez 151, Glew',
       })
       setLoading(false)
     }
@@ -99,6 +102,8 @@ export default function ConfiguracionPage() {
       texto_nosotras: form.texto_nosotras || null,
       texto_promos: form.texto_promos || null,
       recargo_tarjeta: parseFloat(form.recargo_tarjeta) || 20,
+      costo_envio: parseFloat(form.costo_envio) || 12000,
+      direccion_retiro: form.direccion_retiro || null,
     })
     setSaving(false)
     setToast('Configuración guardada')
@@ -227,6 +232,43 @@ export default function ConfiguracionPage() {
             </div>
             <div style={{ fontSize: '13px', color: 'var(--text-muted)', paddingTop: '20px' }}>
               Ej: precio $1000 → tarjeta <strong style={{ color: 'var(--text)' }}>${(1000 * (1 + (parseFloat(form.recargo_tarjeta) || 0) / 100)).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</strong>
+            </div>
+          </div>
+        </div>
+
+        {/* Envíos */}
+        <div className="card">
+          <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '4px', color: 'var(--gold)' }}>Envíos</h3>
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px' }}>
+            Configuración de envío a domicilio y retiro en local para la tienda online.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '5px' }}>
+                Costo de envío OCA a domicilio ($)
+              </label>
+              <input
+                type="number" min="0" step="100"
+                value={form.costo_envio}
+                onChange={e => setForm(f => ({ ...f, costo_envio: e.target.value }))}
+                style={{ maxWidth: '200px' }}
+              />
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                Se suma al total cuando el cliente elige envío a domicilio.
+              </div>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '5px' }}>
+                Dirección de retiro en local
+              </label>
+              <input
+                placeholder="Méndez 151, Glew"
+                value={form.direccion_retiro}
+                onChange={e => setForm(f => ({ ...f, direccion_retiro: e.target.value }))}
+              />
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                Se muestra al cliente cuando elige retiro sin costo.
+              </div>
             </div>
           </div>
         </div>

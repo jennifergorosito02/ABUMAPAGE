@@ -6,7 +6,6 @@ const mp = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN!,
 })
 
-// Cliente admin para insertar sin RLS (usamos service role)
 function supabaseAdmin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,19 +15,19 @@ function supabaseAdmin() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { items, metodo_pago, recargo, back_url, cliente } = await request.json()
+    const { items, metodo_pago, recargo, back_url, cliente, tipo_envio, direccion_envio, costo_envio } = await request.json()
 
     const supabase = supabaseAdmin()
 
-    // Calcular totales
-    const subtotal = items.reduce((s: number, i: any) => s + i.precio_venta * i.cantidad, 0)
-    const total = metodo_pago === 'tarjeta'
-      ? Math.round(subtotal * (1 + (recargo ?? 0) / 100))
-      : subtotal
-
-    // Precio unitario con recargo si corresponde
     const precioFinal = (precio: number) =>
       metodo_pago === 'tarjeta' ? Math.round(precio * (1 + (recargo ?? 0) / 100)) : precio
+
+    const subtotalProductos = items.reduce((s: number, i: any) => s + i.precio_venta * i.cantidad, 0)
+    const subtotalConRecargo = metodo_pago === 'tarjeta'
+      ? Math.round(subtotalProductos * (1 + (recargo ?? 0) / 100))
+      : subtotalProductos
+    const gastoEnvio = tipo_envio === 'domicilio' ? (costo_envio ?? 0) : 0
+    const total = subtotalConRecargo + gastoEnvio
 
     // 1. Insertar pedido en Supabase
     const { data: pedido, error: pedidoError } = await supabase
@@ -38,9 +37,11 @@ export async function POST(request: NextRequest) {
         cliente_email: cliente?.email ?? null,
         cliente_telefono: cliente?.telefono ?? null,
         metodo_pago,
-        subtotal,
+        subtotal: subtotalProductos,
         total,
         recargo_pct: recargo ?? 0,
+        tipo_envio: tipo_envio ?? 'retiro',
+        direccion_envio: direccion_envio ?? null,
         estado: 'pendiente',
       })
       .select('id')
@@ -52,28 +53,41 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Insertar items del pedido
-    const itemsDB = items.map((i: any) => ({
-      pedido_id: pedido.id,
-      producto_id: i.id,
-      nombre: i.nombre,
-      cantidad: i.cantidad,
-      precio_unitario: precioFinal(i.precio_venta),
+    await supabase.from('pedido_items').insert(
+      items.map((i: any) => ({
+        pedido_id: pedido.id,
+        producto_id: i.id,
+        nombre: i.nombre,
+        cantidad: i.cantidad,
+        precio_unitario: precioFinal(i.precio_venta),
+      }))
+    )
+
+    // 3. Armar items para MP — incluye envío como ítem si corresponde
+    const mpItems: any[] = items.map((item: any) => ({
+      id: String(item.id),
+      title: item.nombre,
+      quantity: item.cantidad,
+      unit_price: precioFinal(item.precio_venta),
+      currency_id: 'ARS',
     }))
 
-    await supabase.from('pedido_items').insert(itemsDB)
+    if (gastoEnvio > 0) {
+      mpItems.push({
+        id: 'envio',
+        title: 'Envío OCA a domicilio',
+        quantity: 1,
+        unit_price: gastoEnvio,
+        currency_id: 'ARS',
+      })
+    }
 
-    // 3. Crear preference en MP con external_reference = pedido.id
+    // 4. Crear preference en MP
     const preference = new Preference(mp)
     const result = await preference.create({
       body: {
         external_reference: pedido.id,
-        items: items.map((item: any) => ({
-          id: String(item.id),
-          title: item.nombre,
-          quantity: item.cantidad,
-          unit_price: precioFinal(item.precio_venta),
-          currency_id: 'ARS',
-        })),
+        items: mpItems,
         payer: cliente?.email ? {
           name: cliente.nombre ?? undefined,
           email: cliente.email,
@@ -86,6 +100,13 @@ export async function POST(request: NextRequest) {
         },
         auto_return: 'approved',
         statement_descriptor: 'ABUMA.MA',
+        payment_methods: {
+          excluded_payment_types: [
+            { id: 'ticket' },
+            { id: 'atm' },
+            { id: 'bank_transfer' },
+          ],
+        },
         notification_url: `${process.env.NEXT_PUBLIC_APP_URL ?? back_url}/api/mp-webhook`,
       },
     })

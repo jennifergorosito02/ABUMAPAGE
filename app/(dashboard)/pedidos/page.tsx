@@ -19,6 +19,9 @@ interface Pedido {
   subtotal: number
   total: number
   recargo_pct: number
+  tipo_envio: string | null
+  direccion_envio: string | null
+  numero_seguimiento: string | null
   estado: 'pendiente' | 'aprobado' | 'cancelado'
   mp_payment_id: string | null
   created_at: string
@@ -44,21 +47,42 @@ export default function PedidosPage() {
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
   const [expandido, setExpandido] = useState<string | null>(null)
-  const [filtro, setFiltro] = useState<'todos' | 'pendiente' | 'aprobado' | 'cancelado'>('todos')
+  const [filtro, setFiltro] = useState<'todos' | 'pendiente' | 'aprobado' | 'cancelado'>('aprobado')
+  const [trackingInputs, setTrackingInputs] = useState<Record<string, string>>({})
+  const [savingTracking, setSavingTracking] = useState<string | null>(null)
+  const [toast, setToast] = useState('')
+
+  function showToast(msg: string) {
+    setToast(msg)
+    setTimeout(() => setToast(''), 3000)
+  }
 
   async function fetchPedidos() {
-    const q = supabase
+    const { data } = await supabase
       .from('pedidos')
       .select('*, pedido_items(nombre, cantidad, precio_unitario)')
       .order('created_at', { ascending: false })
       .limit(100)
-
-    const { data } = await q
     setPedidos((data ?? []) as Pedido[])
     setLoading(false)
   }
 
   useEffect(() => { fetchPedidos() }, [])
+
+  async function guardarSeguimiento(pedidoId: string, numero: string) {
+    setSavingTracking(pedidoId)
+    const { error } = await supabase
+      .from('pedidos')
+      .update({ numero_seguimiento: numero || null })
+      .eq('id', pedidoId)
+    if (error) {
+      showToast('Error al guardar')
+    } else {
+      setPedidos(prev => prev.map(p => p.id === pedidoId ? { ...p, numero_seguimiento: numero || null } : p))
+      showToast('Número de seguimiento guardado')
+    }
+    setSavingTracking(null)
+  }
 
   const pedidosFiltrados = filtro === 'todos' ? pedidos : pedidos.filter(p => p.estado === filtro)
 
@@ -73,6 +97,15 @@ export default function PedidosPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: '24px', right: '24px', zIndex: 200,
+          background: 'var(--bg-card)', border: '1px solid var(--border-light)',
+          borderRadius: '8px', padding: '12px 16px', fontSize: '14px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+        }}>{toast}</div>
+      )}
 
       <div>
         <h1 style={{ fontFamily: 'var(--font-cormorant, serif)', fontSize: '32px', fontWeight: 600, color: 'var(--gold)', margin: 0 }}>
@@ -132,6 +165,9 @@ export default function PedidosPage() {
           {pedidosFiltrados.map(p => {
             const badge = BADGE[p.estado]
             const abierto = expandido === p.id
+            const trackingVal = trackingInputs[p.id] ?? (p.numero_seguimiento ?? '')
+            const ocaUrl = `https://www.oca.com.ar/seguimiento/seguimiento-envios/?id=${p.numero_seguimiento}`
+
             return (
               <div key={p.id} className="card" style={{ padding: 0, overflow: 'hidden' }}>
 
@@ -164,10 +200,17 @@ export default function PedidosPage() {
                     </div>
                   </div>
 
-                  {/* Método */}
-                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)', flexShrink: 0 }}>
-                    {p.metodo_pago === 'tarjeta' ? '💳 Tarjeta' : '💵 Efectivo'}
-                  </div>
+                  {/* Envío badge */}
+                  {p.tipo_envio === 'domicilio' && (
+                    <span style={{
+                      padding: '2px 8px', borderRadius: '10px', fontSize: '11px',
+                      color: p.numero_seguimiento ? '#3aaa6e' : '#c8a96e',
+                      background: p.numero_seguimiento ? 'rgba(58,170,110,0.12)' : 'rgba(200,169,110,0.1)',
+                      flexShrink: 0,
+                    }}>
+                      {p.numero_seguimiento ? '📦 Despachado' : '🚚 A domicilio'}
+                    </span>
+                  )}
 
                   {/* Total */}
                   <div style={{ fontWeight: 700, fontSize: '16px', color: 'var(--gold)', flexShrink: 0 }}>
@@ -182,7 +225,7 @@ export default function PedidosPage() {
 
                 {/* Detalle expandido */}
                 {abierto && (
-                  <div style={{ borderTop: '1px solid var(--border)', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ borderTop: '1px solid var(--border)', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
                     {/* Contacto */}
                     <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
@@ -201,6 +244,18 @@ export default function PedidosPage() {
                           </a>
                         </div>
                       )}
+                      <div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '2px' }}>Entrega</div>
+                        <span style={{ fontSize: '13px', color: p.tipo_envio === 'domicilio' ? '#c8a96e' : 'var(--text-secondary)', fontWeight: 600 }}>
+                          {p.tipo_envio === 'domicilio' ? '🚚 Envío a domicilio' : '🏪 Retiro en local'}
+                        </span>
+                      </div>
+                      {p.tipo_envio === 'domicilio' && p.direccion_envio && (
+                        <div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '2px' }}>Dirección</div>
+                          <span style={{ fontSize: '13px', color: 'var(--text)' }}>{p.direccion_envio}</span>
+                        </div>
+                      )}
                       {p.mp_payment_id && (
                         <div>
                           <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '2px' }}>ID de pago MP</div>
@@ -208,6 +263,69 @@ export default function PedidosPage() {
                         </div>
                       )}
                     </div>
+
+                    {/* Seguimiento OCA — solo para envíos a domicilio */}
+                    {p.tipo_envio === 'domicilio' && (
+                      <div style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px 16px' }}>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px', fontWeight: 600 }}>
+                          📦 Seguimiento OCA
+                        </div>
+
+                        {p.numero_seguimiento && (
+                          <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                            <a
+                              href={ocaUrl}
+                              target="_blank" rel="noopener noreferrer"
+                              style={{
+                                fontSize: '13px', color: '#3aaa6e', fontFamily: 'monospace',
+                                textDecoration: 'none', fontWeight: 600,
+                              }}
+                            >
+                              {p.numero_seguimiento} → Ver en OCA
+                            </a>
+                            {p.cliente_telefono && (
+                              <a
+                                href={`https://wa.me/${p.cliente_telefono.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${p.cliente_nombre ?? ''}! Tu pedido de ABUMA.MA ya fue despachado por OCA 📦\nPodés rastrearlo acá: ${ocaUrl}`)}`}
+                                target="_blank" rel="noopener noreferrer"
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                  padding: '5px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                                  background: 'rgba(37,211,102,0.15)', border: '1px solid rgba(37,211,102,0.3)',
+                                  color: '#25d366', textDecoration: 'none',
+                                }}
+                              >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                                  <path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.554 4.117 1.524 5.847L.057 23.272a.75.75 0 0 0 .92.92l5.424-1.467A11.945 11.945 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75c-1.9 0-3.68-.508-5.215-1.393l-.374-.22-3.872 1.047 1.046-3.87-.221-.374A9.714 9.714 0 0 1 2.25 12C2.25 6.615 6.615 2.25 12 2.25S21.75 6.615 21.75 12 17.385 21.75 12 21.75z"/>
+                                </svg>
+                                Enviar link al cliente
+                              </a>
+                            )}
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <input
+                            value={trackingVal}
+                            onChange={e => setTrackingInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
+                            placeholder="Número de seguimiento OCA"
+                            style={{ flex: 1, fontSize: '13px', padding: '7px 10px' }}
+                            onKeyDown={e => { if (e.key === 'Enter') guardarSeguimiento(p.id, trackingVal) }}
+                          />
+                          <button
+                            onClick={() => guardarSeguimiento(p.id, trackingVal)}
+                            disabled={savingTracking === p.id}
+                            style={{
+                              padding: '7px 16px', borderRadius: '6px', fontSize: '13px', fontWeight: 600,
+                              background: 'var(--gold)', color: '#000', border: 'none', cursor: 'pointer',
+                              opacity: savingTracking === p.id ? 0.6 : 1, flexShrink: 0,
+                            }}
+                          >
+                            {savingTracking === p.id ? 'Guardando...' : 'Guardar'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Items */}
                     <div>
@@ -242,10 +360,10 @@ export default function PedidosPage() {
                       </div>
                     </div>
 
-                    {/* Acción contacto rápido */}
+                    {/* Contacto rápido */}
                     {p.cliente_telefono && (
                       <a
-                        href={`https://wa.me/${p.cliente_telefono.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${p.cliente_nombre ?? ''}! Te escribimos de ABUMA.MA por tu pedido. ¿Cómo podemos coordinar la entrega?`)}`}
+                        href={`https://wa.me/${p.cliente_telefono.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${p.cliente_nombre ?? ''}! Te escribimos de ABUMA.MA por tu pedido. ${p.tipo_envio === 'domicilio' ? `Vamos a coordinar el envío a ${p.direccion_envio ?? 'tu domicilio'}.` : '¿Cuándo venís a retirar?'}`)}`}
                         target="_blank" rel="noopener noreferrer"
                         style={{
                           display: 'inline-flex', alignItems: 'center', gap: '8px',

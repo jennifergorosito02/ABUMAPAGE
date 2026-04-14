@@ -7,6 +7,7 @@ import Link from 'next/link'
 export default function PagoPendientePage() {
   useEffect(() => {
     localStorage.removeItem('carrito')
+    localStorage.removeItem('pedidoEnCurso')
     window.dispatchEvent(new Event('carritoUpdate'))
   }, [])
 
