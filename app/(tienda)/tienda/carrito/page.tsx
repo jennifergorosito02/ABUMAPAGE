@@ -75,7 +75,7 @@ export default function CarritoPage() {
   useEffect(() => {
     async function init() {
       await fetchItems()
-      const result = await supabase.from('configuracion').select('recargo_tarjeta, costo_envio, direccion_retiro').eq('id', 1).single()
+      const result = await supabase.from('configuracion').select('recargo_tarjeta, costo_envio, direccion_retiro, alias_transferencia').eq('id', 1).single()
       if (result.data) {
         if (result.data.recargo_tarjeta != null) setRecargo(Number(result.data.recargo_tarjeta))
         if (result.data.costo_envio != null) setCostoEnvio(Number(result.data.costo_envio))
