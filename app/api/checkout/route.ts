@@ -15,7 +15,7 @@ function supabaseAdmin() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { items, metodo_pago, recargo, back_url, cliente, tipo_envio, direccion_envio, costo_envio } = await request.json()
+    const { items, metodo_pago, recargo, back_url, cliente, tipo_envio, direccion_envio, costo_envio, sin_mp } = await request.json()
 
     const supabase = supabaseAdmin()
 
@@ -63,7 +63,41 @@ export async function POST(request: NextRequest) {
       }))
     )
 
-    // 3. Armar items para MP — incluye envío como ítem si corresponde
+    // 3. Si es pago por transferencia (sin MP), notificar y devolver pedido_id
+    if (sin_mp) {
+      const formatARS = (n: number) => `$${Math.round(n).toLocaleString('es-AR')}`
+      const listaItems = items.map((i: any) => `  • ${i.nombre} x${i.cantidad}`).join('\n')
+      const msg = [
+        '🔔 *NUEVO PEDIDO — PENDIENTE PAGO*',
+        '',
+        `👤 ${cliente?.nombre ?? 'Sin nombre'}`,
+        cliente?.telefono ? `📱 ${cliente.telefono}` : '',
+        `💳 Pago: Débito / Transferencia`,
+        '🏪 Retiro en local',
+        '',
+        '*Productos:*',
+        listaItems,
+        '',
+        `💰 Total: ${formatARS(total)}`,
+        '',
+        '⚠️ Esperando confirmación de transferencia',
+      ].filter(Boolean).join('\n')
+
+      const numeros = [
+        { phone: '541127178564', apikey: process.env.WA_APIKEY_1 },
+        { phone: '541164595509', apikey: process.env.WA_APIKEY_2 },
+      ]
+      for (const { phone, apikey } of numeros) {
+        if (!apikey) continue
+        try {
+          await fetch(`https://api.callmebot.com/whatsapp.php?phone=${phone}&text=${encodeURIComponent(msg)}&apikey=${apikey}`)
+        } catch { /* ignorar */ }
+      }
+
+      return NextResponse.json({ pedido_id: pedido.id })
+    }
+
+    // 4. Armar items para MP — incluye envío como ítem si corresponde
     const mpItems: any[] = items.map((item: any) => ({
       id: String(item.id),
       title: item.nombre,

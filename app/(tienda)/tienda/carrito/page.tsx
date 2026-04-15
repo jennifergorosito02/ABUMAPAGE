@@ -47,6 +47,7 @@ export default function CarritoPage() {
   const [direccionEnvio, setDireccionEnvio] = useState('')
   const [costoEnvio, setCostoEnvio] = useState(12000)
   const [direccionRetiro, setDireccionRetiro] = useState('')
+  const [aliasTransferencia, setAliasTransferencia] = useState('')
 
   // Al elegir domicilio, forzar pago con tarjeta
   useEffect(() => {
@@ -79,6 +80,7 @@ export default function CarritoPage() {
         if (result.data.recargo_tarjeta != null) setRecargo(Number(result.data.recargo_tarjeta))
         if (result.data.costo_envio != null) setCostoEnvio(Number(result.data.costo_envio))
         if (result.data.direccion_retiro) setDireccionRetiro(result.data.direccion_retiro)
+        if (result.data.alias_transferencia) setAliasTransferencia(result.data.alias_transferencia)
       }
     }
     init()
@@ -88,7 +90,40 @@ export default function CarritoPage() {
     if (!cliente.nombre.trim()) { setErrorPago('Ingresá tu nombre para continuar'); return }
     if (tipoEnvio === 'domicilio' && !direccionEnvio.trim()) { setErrorPago('Ingresá tu dirección de envío'); return }
 
-    // Anti-duplicado: si ya hay un pedido en curso de los últimos 30 min, reusar
+    // TRANSFERENCIA: crear pedido sin MP, redirigir a confirmación
+    if (metodoPago === 'efectivo') {
+      setProcesando(true)
+      setErrorPago('')
+      try {
+        const res = await fetch('/api/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items,
+            metodo_pago: 'efectivo',
+            recargo: 0,
+            back_url: window.location.origin,
+            cliente,
+            tipo_envio: 'retiro',
+            direccion_envio: null,
+            costo_envio: 0,
+            sin_mp: true,
+          }),
+        })
+        const data = await res.json()
+        if (data.error) { setErrorPago(data.error); setProcesando(false); return }
+        localStorage.removeItem('carrito')
+        localStorage.removeItem('pedidoEnCurso')
+        window.dispatchEvent(new Event('carritoUpdate'))
+        window.location.href = `/tienda/pago/transferencia?id=${data.pedido_id}&alias=${encodeURIComponent(aliasTransferencia)}&total=${total}&nombre=${encodeURIComponent(cliente.nombre)}`
+      } catch {
+        setErrorPago('Error al registrar el pedido')
+        setProcesando(false)
+      }
+      return
+    }
+
+    // MP: tarjeta crédito o envío a domicilio
     try {
       const enCurso = JSON.parse(localStorage.getItem('pedidoEnCurso') ?? 'null')
       if (enCurso?.initPoint && Date.now() - enCurso.timestamp < 30 * 60 * 1000) {
@@ -116,7 +151,6 @@ export default function CarritoPage() {
       })
       const data = await res.json()
       if (data.error) { setErrorPago(data.error); setProcesando(false); return }
-      // Guardar en localStorage para evitar duplicados
       localStorage.setItem('pedidoEnCurso', JSON.stringify({ initPoint: data.init_point, timestamp: Date.now() }))
       window.location.href = data.init_point
     } catch {
@@ -243,26 +277,42 @@ export default function CarritoPage() {
                     </div>
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                    <button onClick={() => setMetodoPago('efectivo')} style={{
-                      padding: '10px 8px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
-                      border: `1px solid ${metodoPago === 'efectivo' ? 'var(--gold)' : 'var(--border)'}`,
-                      background: metodoPago === 'efectivo' ? 'rgba(200,169,110,0.12)' : 'transparent',
-                      color: metodoPago === 'efectivo' ? 'var(--gold)' : 'var(--text-secondary)',
-                      cursor: 'pointer', transition: 'all 0.15s', textAlign: 'center',
-                    }}>
-                      🏦 Débito / Transferencia
-                    </button>
-                    <button onClick={() => setMetodoPago('tarjeta')} style={{
-                      padding: '10px 8px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
-                      border: `1px solid ${metodoPago === 'tarjeta' ? '#7c6fcd' : 'var(--border)'}`,
-                      background: metodoPago === 'tarjeta' ? 'rgba(124,111,205,0.12)' : 'transparent',
-                      color: metodoPago === 'tarjeta' ? '#a89fdf' : 'var(--text-secondary)',
-                      cursor: 'pointer', transition: 'all 0.15s', textAlign: 'center',
-                    }}>
-                      💳 Crédito
-                    </button>
-                  </div>
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      <button onClick={() => setMetodoPago('efectivo')} style={{
+                        padding: '10px 8px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+                        border: `1px solid ${metodoPago === 'efectivo' ? 'var(--gold)' : 'var(--border)'}`,
+                        background: metodoPago === 'efectivo' ? 'rgba(200,169,110,0.12)' : 'transparent',
+                        color: metodoPago === 'efectivo' ? 'var(--gold)' : 'var(--text-secondary)',
+                        cursor: 'pointer', transition: 'all 0.15s', textAlign: 'center',
+                      }}>
+                        🏦 Débito / Transferencia
+                      </button>
+                      <button onClick={() => setMetodoPago('tarjeta')} style={{
+                        padding: '10px 8px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+                        border: `1px solid ${metodoPago === 'tarjeta' ? '#7c6fcd' : 'var(--border)'}`,
+                        background: metodoPago === 'tarjeta' ? 'rgba(124,111,205,0.12)' : 'transparent',
+                        color: metodoPago === 'tarjeta' ? '#a89fdf' : 'var(--text-secondary)',
+                        cursor: 'pointer', transition: 'all 0.15s', textAlign: 'center',
+                      }}>
+                        💳 Crédito
+                      </button>
+                    </div>
+                    {metodoPago === 'efectivo' && aliasTransferencia && (
+                      <div style={{ marginTop: '8px', padding: '10px 12px', borderRadius: '7px', background: 'rgba(200,169,110,0.06)', border: '1px solid rgba(200,169,110,0.2)' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Datos para transferir</div>
+                        <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--gold)', fontFamily: 'monospace', letterSpacing: '0.04em' }}>{aliasTransferencia}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                          Confirmamos tu pedido al verificar el pago.
+                        </div>
+                      </div>
+                    )}
+                    {metodoPago === 'tarjeta' && (
+                      <div style={{ marginTop: '8px', padding: '8px 12px', borderRadius: '7px', background: 'rgba(124,111,205,0.06)', border: '1px solid rgba(124,111,205,0.2)', fontSize: '11px', color: 'rgba(168,159,223,0.8)', textAlign: 'center' }}>
+                        Vas a pagar con tarjeta de crédito a través de Mercado Pago
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -418,7 +468,11 @@ export default function CarritoPage() {
                   opacity: procesando ? 0.7 : 1, marginTop: '4px',
                 }}
               >
-                {procesando ? 'Procesando...' : 'Pagar con Mercado Pago'}
+                {procesando
+                  ? 'Procesando...'
+                  : metodoPago === 'efectivo'
+                    ? 'Confirmar pedido'
+                    : 'Pagar con Mercado Pago'}
               </button>
 
               <p style={{ fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>

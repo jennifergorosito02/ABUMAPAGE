@@ -69,6 +69,32 @@ export default function PedidosPage() {
 
   useEffect(() => { fetchPedidos() }, [])
 
+  async function aprobarPedidoManual(pedidoId: string) {
+    const { error } = await supabase
+      .from('pedidos')
+      .update({ estado: 'aprobado' })
+      .eq('id', pedidoId)
+      .eq('estado', 'pendiente')
+
+    if (error) { showToast('Error al confirmar el pago'); return }
+
+    // Descontar stock
+    const { data: itemsStock } = await supabase
+      .from('pedido_items')
+      .select('producto_id, cantidad')
+      .eq('pedido_id', pedidoId)
+
+    for (const item of itemsStock ?? []) {
+      await supabase.rpc('descontar_stock_online', {
+        p_producto_id: item.producto_id,
+        p_cantidad: item.cantidad,
+      })
+    }
+
+    setPedidos(prev => prev.map(p => p.id === pedidoId ? { ...p, estado: 'aprobado' } : p))
+    showToast('Pago confirmado — stock actualizado')
+  }
+
   async function guardarSeguimiento(pedidoId: string, numero: string) {
     setSavingTracking(pedidoId)
     const { error } = await supabase
@@ -359,6 +385,21 @@ export default function PedidosPage() {
                         <span>{formatARS(p.total)}</span>
                       </div>
                     </div>
+
+                    {/* Confirmar pago manual (transferencia/débito) */}
+                    {p.estado === 'pendiente' && p.metodo_pago !== 'tarjeta' && (
+                      <button
+                        onClick={() => aprobarPedidoManual(p.id)}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '8px',
+                          padding: '9px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
+                          background: 'rgba(58,170,110,0.15)', border: '1px solid rgba(58,170,110,0.35)',
+                          color: '#3aaa6e', cursor: 'pointer', width: 'fit-content',
+                        }}
+                      >
+                        ✓ Confirmar pago recibido
+                      </button>
+                    )}
 
                     {/* Contacto rápido */}
                     {p.cliente_telefono && (

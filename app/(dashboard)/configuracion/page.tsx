@@ -10,9 +10,9 @@ interface Config {
   email: string; afip_punto_venta: string; afip_ambiente: string
   wsp: string; instagram: string; direccion_tienda: string
   texto_nosotras: string; texto_promos: string; recargo_tarjeta: string
-  costo_envio: string; direccion_retiro: string
+  costo_envio: string; direccion_retiro: string; alias_transferencia: string
 }
-const EMPTY: Config = { razon_social: '', cuit: '', domicilio: '', telefono: '', email: '', afip_punto_venta: '1', afip_ambiente: 'homologacion', wsp: '', instagram: '', direccion_tienda: '', texto_nosotras: '', texto_promos: '', recargo_tarjeta: '20', costo_envio: '12000', direccion_retiro: 'Méndez 151, Glew' }
+const EMPTY: Config = { razon_social: '', cuit: '', domicilio: '', telefono: '', email: '', afip_punto_venta: '1', afip_ambiente: 'homologacion', wsp: '', instagram: '', direccion_tienda: '', texto_nosotras: '', texto_promos: '', recargo_tarjeta: '20', costo_envio: '12000', direccion_retiro: 'Méndez 151, Glew', alias_transferencia: '' }
 
 interface ImagenTienda {
   name: string
@@ -58,7 +58,8 @@ export default function ConfiguracionPage() {
         recargo_tarjeta: data.recargo_tarjeta?.toString() ?? '20',
         costo_envio: data.costo_envio?.toString() ?? '12000',
         direccion_retiro: data.direccion_retiro ?? 'Méndez 151, Glew',
-      })
+        alias_transferencia: data.alias_transferencia ?? '',
+      } as Config)
       setLoading(false)
     }
     fetch()
@@ -104,6 +105,7 @@ export default function ConfiguracionPage() {
       recargo_tarjeta: parseFloat(form.recargo_tarjeta) || 20,
       costo_envio: parseFloat(form.costo_envio) || 12000,
       direccion_retiro: form.direccion_retiro || null,
+      alias_transferencia: form.alias_transferencia || null,
     })
     setSaving(false)
     setToast('Configuración guardada')
@@ -268,6 +270,19 @@ export default function ConfiguracionPage() {
               />
               <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
                 Se muestra al cliente cuando elige retiro sin costo.
+              </div>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '5px' }}>
+                Alias / CVU para transferencias
+              </label>
+              <input
+                placeholder="abuma.ma o 0000003100..."
+                value={form.alias_transferencia}
+                onChange={e => setForm(f => ({ ...f, alias_transferencia: e.target.value }))}
+              />
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                Se muestra al cliente al confirmar un pedido por débito o transferencia.
               </div>
             </div>
           </div>
