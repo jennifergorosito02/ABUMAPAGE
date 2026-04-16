@@ -300,7 +300,7 @@ export default function CarritoPage() {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
                     {[
                       { key: 'debito', icon: '💳', label: 'Débito', sub: 'Precio lista' },
-                      { key: 'credito', icon: '💳', label: 'Crédito', sub: `+${recargo}% recargo` },
+                      { key: 'credito', icon: '💳', label: 'Crédito', sub: '' },
                       { key: 'qr', icon: '📱', label: 'QR', sub: 'Precio lista' },
                     ].map(({ key, icon, label, sub }) => (
                       <button key={key} onClick={() => setMetodoPago(key as any)} style={{
