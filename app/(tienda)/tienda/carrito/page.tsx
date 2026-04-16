@@ -331,11 +331,6 @@ export default function CarritoPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-secondary)' }}>
                   <span>Subtotal</span><span>{formatARS(subtotal)}</span>
                 </div>
-                {montoRecargo > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'rgba(168,159,223,0.8)' }}>
-                    <span>Recargo crédito ({recargo}%)</span><span>+ {formatARS(montoRecargo)}</span>
-                  </div>
-                )}
                 {gastoEnvio > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-secondary)' }}>
                     <span>Envío OCA</span><span>{formatARS(gastoEnvio)}</span>
