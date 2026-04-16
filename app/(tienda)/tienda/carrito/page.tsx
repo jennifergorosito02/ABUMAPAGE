@@ -8,7 +8,7 @@ import { initMercadoPago, CardPayment } from '@mercadopago/sdk-react'
 import { QRCodeSVG } from 'qrcode.react'
 
 if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_MP_PUBLIC_KEY) {
-  initMercadoPago(process.env.NEXT_PUBLIC_MP_PUBLIC_KEY, { locale: 'es-AR' })
+  initMercadoPago(process.env.NEXT_PUBLIC_MP_PUBLIC_KEY)
 }
 
 interface ItemCarrito {
@@ -54,7 +54,6 @@ export default function CarritoPage() {
   const [costoEnvio, setCostoEnvio] = useState(12000)
   const [direccionRetiro, setDireccionRetiro] = useState('')
   const [qrUrl, setQrUrl] = useState('')
-  const [brickKey, setBrickKey] = useState(0)
 
   // Al elegir domicilio → forzar QR/MP
   useEffect(() => {
@@ -65,7 +64,6 @@ export default function CarritoPage() {
   useEffect(() => {
     setQrUrl('')
     setErrorPago('')
-    setBrickKey(k => k + 1)
   }, [metodoPago])
 
   async function fetchItems() {
@@ -450,17 +448,10 @@ export default function CarritoPage() {
                     </div>
                   ) : total > 0 ? (
                     <CardPayment
-                      key={`${metodoPago}-${total}-${brickKey}`}
+                      key={metodoPago}
                       initialization={{ amount: total }}
                       onSubmit={onSubmitBrick}
-                      onError={(error) => {
-                        console.error('Brick error:', error)
-                      }}
-                      customization={{
-                        paymentMethods: {
-                          maxInstallments: metodoPago === 'debito' ? 1 : 12,
-                        },
-                      }}
+                      onError={(error) => console.error('Brick error:', error)}
                     />
                   ) : null}
                   {procesando && (
