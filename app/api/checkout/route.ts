@@ -138,6 +138,8 @@ export async function POST(request: NextRequest) {
           excluded_payment_types: [
             { id: 'ticket' },
             { id: 'atm' },
+            ...(metodo_pago === 'debito' ? [{ id: 'credit_card' }] : []),
+            ...(metodo_pago === 'credito' ? [{ id: 'debit_card' }] : []),
           ],
         },
         notification_url: `${process.env.NEXT_PUBLIC_APP_URL ?? back_url}/api/mp-webhook`,
