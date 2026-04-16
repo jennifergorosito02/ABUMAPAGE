@@ -97,9 +97,11 @@ export async function POST(request: NextRequest) {
         .map(i => `  • ${i.nombre} x${i.cantidad} — ${formatARS(i.precio_unitario * i.cantidad)}`)
         .join('\n')
 
-      const metodoPagoLabel = pedidoAprobado.metodo_pago === 'tarjeta'
-        ? 'Crédito (con recargo)'
-        : 'Débito / Transferencia'
+      const metodoPagoLabel =
+        pedidoAprobado.metodo_pago === 'credito' ? 'Crédito (con recargo)' :
+        pedidoAprobado.metodo_pago === 'debito' ? 'Débito' :
+        pedidoAprobado.metodo_pago === 'qr' ? 'QR / Billetera' :
+        pedidoAprobado.metodo_pago
 
       const envioLabel = pedidoAprobado.tipo_envio === 'domicilio'
         ? `🚚 Envío a domicilio: ${pedidoAprobado.direccion_envio ?? 'sin dirección'}`
