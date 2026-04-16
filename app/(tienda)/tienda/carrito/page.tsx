@@ -448,30 +448,21 @@ export default function CarritoPage() {
                     <div style={{ padding: '12px', borderRadius: '8px', background: 'rgba(220,50,50,0.1)', fontSize: '13px', color: 'var(--danger)' }}>
                       Configuración incompleta: falta la llave pública de Mercado Pago.
                     </div>
-                  ) : (
+                  ) : total > 0 ? (
                     <CardPayment
                       key={`${metodoPago}-${total}-${brickKey}`}
                       initialization={{ amount: total }}
                       onSubmit={onSubmitBrick}
                       onError={(error) => {
                         console.error('Brick error:', error)
-                        setErrorPago('Error en el formulario de pago. Recargá la página.')
                       }}
                       customization={{
                         paymentMethods: {
-                          types: {
-                            excluded: metodoPago === 'debito' ? ['credit_card'] : ['debit_card'],
-                          },
                           maxInstallments: metodoPago === 'debito' ? 1 : 12,
-                        },
-                        visual: {
-                          style: {
-                            theme: 'dark',
-                          },
                         },
                       }}
                     />
-                  )}
+                  ) : null}
                   {procesando && (
                     <div style={{ textAlign: 'center', padding: '12px', color: 'var(--text-muted)', fontSize: '13px' }}>
                       Procesando pago...
