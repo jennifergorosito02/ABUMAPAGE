@@ -20,10 +20,10 @@ export async function POST(request: NextRequest) {
     const supabase = supabaseAdmin()
 
     const precioFinal = (precio: number) =>
-      metodo_pago === 'tarjeta' ? Math.round(precio * (1 + (recargo ?? 0) / 100)) : precio
+      metodo_pago === 'credito' ? Math.round(precio * (1 + (recargo ?? 0) / 100)) : precio
 
     const subtotalProductos = items.reduce((s: number, i: any) => s + i.precio_venta * i.cantidad, 0)
-    const subtotalConRecargo = metodo_pago === 'tarjeta'
+    const subtotalConRecargo = metodo_pago === 'credito'
       ? Math.round(subtotalProductos * (1 + (recargo ?? 0) / 100))
       : subtotalProductos
     const gastoEnvio = tipo_envio === 'domicilio' ? (costo_envio ?? 0) : 0
@@ -138,7 +138,6 @@ export async function POST(request: NextRequest) {
           excluded_payment_types: [
             { id: 'ticket' },
             { id: 'atm' },
-            { id: 'bank_transfer' },
           ],
         },
         notification_url: `${process.env.NEXT_PUBLIC_APP_URL ?? back_url}/api/mp-webhook`,

@@ -37,8 +37,10 @@ export async function middleware(request: NextRequest) {
   // Tienda pública — no requiere autenticación
   if (pathname.startsWith('/tienda')) return response
 
-  // API pública (checkout MercadoPago)
+  // APIs públicas
   if (pathname.startsWith('/api/checkout')) return response
+  if (pathname.startsWith('/api/mp-webhook')) return response
+  if (pathname.startsWith('/api/process-payment')) return response
 
   // Raíz → redirigir
   if (pathname === '/') {
