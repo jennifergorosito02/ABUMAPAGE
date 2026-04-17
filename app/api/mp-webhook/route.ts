@@ -14,11 +14,12 @@ async function notificarWhatsApp(mensaje: string) {
     { phone: '541164595509', apikey: process.env.WA_APIKEY_2 },
   ]
   for (const { phone, apikey } of numeros) {
-    if (!apikey) continue
+    if (!apikey) { console.log(`Sin apikey para ${phone}, saltando`); continue }
     try {
-      await fetch(
-        `https://api.callmebot.com/whatsapp.php?phone=${phone}&text=${encodeURIComponent(mensaje)}&apikey=${apikey}`
-      )
+      const url = `https://api.callmebot.com/whatsapp.php?phone=${phone}&text=${encodeURIComponent(mensaje)}&apikey=${apikey}`
+      const res = await fetch(url)
+      const txt = await res.text()
+      console.log(`CallMeBot ${phone}: status=${res.status} resp=${txt.slice(0, 100)}`)
     } catch (e) {
       console.error(`Error notificando ${phone}:`, e)
     }

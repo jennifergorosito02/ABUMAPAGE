@@ -41,6 +41,7 @@ export async function middleware(request: NextRequest) {
   if (pathname.startsWith('/api/checkout')) return response
   if (pathname.startsWith('/api/mp-webhook')) return response
   if (pathname.startsWith('/api/process-payment')) return response
+  if (pathname.startsWith('/api/test-wsp')) return response
 
   // Raíz → redirigir
   if (pathname === '/') {

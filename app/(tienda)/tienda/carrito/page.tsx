@@ -301,7 +301,7 @@ export default function CarritoPage() {
                     {[
                       { key: 'debito', icon: '💳', label: 'Débito', sub: 'Precio lista' },
                       { key: 'credito', icon: '💳', label: 'Crédito', sub: '' },
-                      { key: 'qr', icon: '📱', label: 'QR', sub: 'Precio lista' },
+                      { key: 'qr', icon: '📱', label: 'QR MP', sub: 'Pagar desde la app' },
                     ].map(({ key, icon, label, sub }) => (
                       <button key={key} onClick={() => setMetodoPago(key as any)} style={{
                         padding: '8px 4px', borderRadius: '8px', fontSize: '11px', fontWeight: 600,
@@ -319,7 +319,7 @@ export default function CarritoPage() {
 
                 {metodoPago === 'qr' && !qrUrl && (
                   <div style={{ marginTop: '8px', padding: '8px 10px', borderRadius: '7px', background: 'rgba(200,169,110,0.05)', border: '1px solid rgba(200,169,110,0.1)', fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center' }}>
-                    Generás el QR y pagás escaneándolo con cualquier banco o billetera
+                    Generás el QR y pagás desde la app de Mercado Pago
                   </div>
                 )}
               </div>
@@ -406,7 +406,7 @@ export default function CarritoPage() {
                     ? (metodoPago === 'qr' ? 'Generando QR...' : 'Procesando...')
                     : metodoPago === 'debito' ? '💳 Pagar con débito'
                     : metodoPago === 'credito' ? '💳 Pagar con crédito'
-                    : '📱 Generar QR de pago'}
+                    : '📱 Generar QR — Pagar desde MP'}
                 </button>
               )}
 
