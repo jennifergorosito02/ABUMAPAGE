@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     const { data: productosDB, error: prodError } = await supabase
       .from('productos')
-      .select('id, nombre, precio_venta, activo')
+      .select('id, nombre, precio_venta, stock, activo')
       .in('id', idsProductos)
 
     if (prodError || !productosDB || productosDB.length === 0) {
@@ -58,6 +58,19 @@ export async function POST(request: NextRequest) {
 
     if (items.length === 0) {
       return NextResponse.json({ error: 'Ningún producto válido en el carrito' }, { status: 400 })
+    }
+
+    // Validar stock suficiente para cada item
+    const sinStock = items.filter(i => {
+      const p = productosMap.get(i.id)
+      return p && (p as any).stock < i.cantidad
+    })
+    if (sinStock.length > 0) {
+      const detalle = sinStock.map(i => {
+        const p = productosMap.get(i.id) as any
+        return `${i.nombre} (disponible: ${p?.stock ?? 0})`
+      }).join(', ')
+      return NextResponse.json({ error: `Stock insuficiente: ${detalle}` }, { status: 400 })
     }
 
     // Obtener costo de envío real desde configuracion (no confiar en frontend)

@@ -158,6 +158,11 @@ export default function CarritoPage() {
     }
   }
 
+  function invalidarCacheCheckout() {
+    localStorage.removeItem('pedidoEnCurso')
+    setQrUrl('')
+  }
+
   function updateCantidad(id: number, delta: number) {
     const c = getCarrito()
     const item = items.find(i => i.id === id)
@@ -166,6 +171,7 @@ export default function CarritoPage() {
     c[id] = nueva
     saveCarrito(c)
     setItems(prev => prev.map(i => i.id === id ? { ...i, cantidad: nueva } : i))
+    invalidarCacheCheckout()
   }
 
   function eliminar(id: number) {
@@ -173,6 +179,7 @@ export default function CarritoPage() {
     delete c[id]
     saveCarrito(c)
     setItems(prev => prev.filter(i => i.id !== id))
+    invalidarCacheCheckout()
   }
 
   const subtotal = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)

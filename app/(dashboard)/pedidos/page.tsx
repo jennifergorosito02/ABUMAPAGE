@@ -70,29 +70,22 @@ export default function PedidosPage() {
   useEffect(() => { fetchPedidos() }, [])
 
   async function aprobarPedidoManual(pedidoId: string) {
-    const { error } = await supabase
-      .from('pedidos')
-      .update({ estado: 'aprobado' })
-      .eq('id', pedidoId)
-      .eq('estado', 'pendiente')
-
-    if (error) { showToast('Error al confirmar el pago'); return }
-
-    // Descontar stock
-    const { data: itemsStock } = await supabase
-      .from('pedido_items')
-      .select('producto_id, cantidad')
-      .eq('pedido_id', pedidoId)
-
-    for (const item of itemsStock ?? []) {
-      await supabase.rpc('descontar_stock_online', {
-        p_producto_id: item.producto_id,
-        p_cantidad: item.cantidad,
+    try {
+      const res = await fetch('/api/aprobar-pedido', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pedido_id: pedidoId }),
       })
+      const data = await res.json()
+      if (!res.ok || !data.ok) {
+        showToast('Error al confirmar el pago')
+        return
+      }
+      setPedidos(prev => prev.map(p => p.id === pedidoId ? { ...p, estado: 'aprobado' } : p))
+      showToast('Pago confirmado — stock actualizado ✓')
+    } catch {
+      showToast('Error al confirmar el pago')
     }
-
-    setPedidos(prev => prev.map(p => p.id === pedidoId ? { ...p, estado: 'aprobado' } : p))
-    showToast('Pago confirmado — stock actualizado')
   }
 
   async function guardarSeguimiento(pedidoId: string, numero: string) {
