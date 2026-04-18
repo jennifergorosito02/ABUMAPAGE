@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import crypto from 'crypto'
 
 function supabaseAdmin() {
   return createClient(
@@ -29,6 +30,54 @@ async function notificarTelegram(mensaje: string) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FIX SEGURIDAD: Validar firma HMAC-SHA256 del webhook de MercadoPago.
+// Docs: https://www.mercadopago.com.ar/developers/es/docs/your-integrations/notifications/webhooks
+//
+// El header x-signature tiene formato: ts=<timestamp>,v1=<hash>
+// El manifest a firmar es: id:<data.id>;request-id:<x-request-id>;ts:<timestamp>;
+// ─────────────────────────────────────────────────────────────────────────────
+function validarFirmaMP(request: NextRequest, dataId: string | number): boolean {
+  const secret = process.env.MP_WEBHOOK_SECRET
+  if (!secret) {
+    // Sin secret configurado: aceptar pero advertir (modo permisivo para rollout)
+    console.warn('MP_WEBHOOK_SECRET no configurada — validación de firma omitida')
+    return true
+  }
+
+  const xSignature = request.headers.get('x-signature')
+  const xRequestId = request.headers.get('x-request-id') ?? ''
+
+  if (!xSignature) {
+    console.error('Webhook sin x-signature — rechazado')
+    return false
+  }
+
+  // Parsear ts y v1 del header
+  let ts = '', v1 = ''
+  for (const part of xSignature.split(',')) {
+    const [key, value] = part.trim().split('=')
+    if (key === 'ts') ts = value
+    if (key === 'v1') v1 = value
+  }
+
+  if (!ts || !v1) {
+    console.error('x-signature malformado:', xSignature)
+    return false
+  }
+
+  // Construir el manifest y calcular HMAC
+  const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`
+  const hash = crypto.createHmac('sha256', secret).update(manifest).digest('hex')
+
+  if (hash !== v1) {
+    console.error('Firma HMAC inválida — webhook rechazado')
+    return false
+  }
+
+  return true
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -39,14 +88,22 @@ export async function POST(request: NextRequest) {
     const paymentId = body.data?.id
     if (!paymentId) return NextResponse.json({ ok: true })
 
-    // Consultar estado del pago en MP
+    // ─────────────────────────────────────────────────────────────
+    // Validar firma antes de procesar cualquier cosa
+    // ─────────────────────────────────────────────────────────────
+    if (!validarFirmaMP(request, paymentId)) {
+      // Devolvemos 200 para que MP no reintente (evitar spam de alertas)
+      return NextResponse.json({ ok: false, error: 'firma_invalida' })
+    }
+
+    // Consultar estado del pago en MP (fuente de verdad)
     const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
       headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` },
     })
 
     if (!mpRes.ok) {
       console.error('MP payment fetch error:', mpRes.status, await mpRes.text())
-      return NextResponse.json({ ok: true }) // Devolver 200 igual — no queremos que MP reintente
+      return NextResponse.json({ ok: true })
     }
 
     const payment = await mpRes.json()
@@ -61,8 +118,7 @@ export async function POST(request: NextRequest) {
     const supabase = supabaseAdmin()
 
     if (estado === 'approved') {
-      // IDEMPOTENCIA ATÓMICA: el UPDATE solo se ejecuta si el estado NO es ya 'aprobado'.
-      // Si el pedido ya fue procesado, .single() devuelve null y saltamos todo.
+      // IDEMPOTENCIA ATÓMICA: solo actualiza si el pedido NO está ya aprobado
       const { data: pedidoAprobado, error: updateError } = await supabase
         .from('pedidos')
         .update({ estado: 'aprobado', mp_payment_id: String(paymentId) })
@@ -72,7 +128,6 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (updateError || !pedidoAprobado) {
-        // Ya estaba aprobado o no existe — no hay nada que hacer
         console.log(`Pedido ${pedidoId} ya procesado o no encontrado — ignorando webhook`)
         return NextResponse.json({ ok: true })
       }
@@ -94,7 +149,7 @@ export async function POST(request: NextRequest) {
         if (error) console.error(`Stock insuficiente producto ${item.producto_id}:`, error.message)
       }
 
-      // Armar notificación de WhatsApp
+      // Armar notificación Telegram
       const formatARS = (n: number) => `$${Math.round(n).toLocaleString('es-AR')}`
 
       const listaItems = (items ?? [])
@@ -103,8 +158,8 @@ export async function POST(request: NextRequest) {
 
       const metodoPagoLabel =
         pedidoAprobado.metodo_pago === 'credito' ? 'Crédito (con recargo)' :
-        pedidoAprobado.metodo_pago === 'debito' ? 'Débito' :
-        pedidoAprobado.metodo_pago === 'qr' ? 'QR / Billetera' :
+        pedidoAprobado.metodo_pago === 'debito'  ? 'Débito' :
+        pedidoAprobado.metodo_pago === 'qr'      ? 'QR / Mercado Pago' :
         pedidoAprobado.metodo_pago
 
       const envioLabel = pedidoAprobado.tipo_envio === 'domicilio'
@@ -128,7 +183,7 @@ export async function POST(request: NextRequest) {
       await notificarTelegram(mensaje)
 
     } else if (estado === 'rejected' || estado === 'cancelled') {
-      // Solo cancelar si el pedido todavía está pendiente (no downgrear un aprobado)
+      // Solo cancelar si el pedido todavía está pendiente
       await supabase
         .from('pedidos')
         .update({ estado: 'cancelado', mp_payment_id: String(paymentId) })
