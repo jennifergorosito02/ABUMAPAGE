@@ -1,6 +1,15 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
-export async function GET() {
+// Endpoint de diagnóstico — protegido con header x-admin-key
+// Uso: GET /api/test-wsp con header  x-admin-key: {MP_WEBHOOK_SECRET}
+export async function GET(request: NextRequest) {
+  const secret = process.env.MP_WEBHOOK_SECRET
+  const key = request.headers.get('x-admin-key')
+
+  if (!secret || key !== secret) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  }
+
   const token = process.env.TG_BOT_TOKEN
   const chatId = process.env.TG_CHAT_ID
 
@@ -20,25 +29,6 @@ export async function GET() {
     const data = await res.json()
     if (data.ok) return NextResponse.json({ ok: true, mensaje: 'Mensaje enviado — revisá Telegram' })
     return NextResponse.json({ ok: false, error: data }, { status: 500 })
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
-  }
-}
-
-// Endpoint para obtener el chat_id automáticamente
-export async function POST() {
-  const token = process.env.TG_BOT_TOKEN
-  if (!token) return NextResponse.json({ error: 'Falta TG_BOT_TOKEN en Vercel' }, { status: 500 })
-
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${token}/getUpdates`)
-    const data = await res.json()
-    const updates = data.result ?? []
-    if (updates.length === 0) {
-      return NextResponse.json({ error: 'No hay mensajes aún. Mandá /start al bot en Telegram primero.' })
-    }
-    const chatId = updates[updates.length - 1]?.message?.chat?.id
-    return NextResponse.json({ chat_id: chatId, instruccion: `Agregá TG_CHAT_ID=${chatId} en Vercel` })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
