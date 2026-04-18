@@ -8,21 +8,24 @@ function supabaseAdmin() {
   )
 }
 
-async function notificarWhatsApp(mensaje: string) {
-  const numeros = [
-    { phone: '541127178564', apikey: process.env.WA_APIKEY_1 },
-    { phone: '541164595509', apikey: process.env.WA_APIKEY_2 },
-  ]
-  for (const { phone, apikey } of numeros) {
-    if (!apikey) { console.log(`Sin apikey para ${phone}, saltando`); continue }
-    try {
-      const url = `https://api.callmebot.com/whatsapp.php?phone=${phone}&text=${encodeURIComponent(mensaje)}&apikey=${apikey}`
-      const res = await fetch(url)
-      const txt = await res.text()
-      console.log(`CallMeBot ${phone}: status=${res.status} resp=${txt.slice(0, 100)}`)
-    } catch (e) {
-      console.error(`Error notificando ${phone}:`, e)
-    }
+async function notificarTelegram(mensaje: string) {
+  const token = process.env.TG_BOT_TOKEN
+  const chatId = process.env.TG_CHAT_ID
+  if (!token || !chatId) {
+    console.log('Telegram no configurado: falta TG_BOT_TOKEN o TG_CHAT_ID')
+    return
+  }
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: mensaje, parse_mode: 'Markdown' }),
+    })
+    const data = await res.json()
+    if (!data.ok) console.error('Telegram error:', JSON.stringify(data))
+    else console.log('Telegram enviado OK')
+  } catch (e) {
+    console.error('Error enviando Telegram:', e)
   }
 }
 
@@ -122,7 +125,7 @@ export async function POST(request: NextRequest) {
         `💰 *Total: ${formatARS(pedidoAprobado.total)}*`,
       ].filter(Boolean).join('\n')
 
-      await notificarWhatsApp(mensaje)
+      await notificarTelegram(mensaje)
 
     } else if (estado === 'rejected' || estado === 'cancelled') {
       // Solo cancelar si el pedido todavía está pendiente (no downgrear un aprobado)

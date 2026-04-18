@@ -83,14 +83,15 @@ export async function POST(request: NextRequest) {
         '⚠️ Esperando confirmación de transferencia',
       ].filter(Boolean).join('\n')
 
-      const numeros = [
-        { phone: '541127178564', apikey: process.env.WA_APIKEY_1 },
-        { phone: '541164595509', apikey: process.env.WA_APIKEY_2 },
-      ]
-      for (const { phone, apikey } of numeros) {
-        if (!apikey) continue
+      const token = process.env.TG_BOT_TOKEN
+      const chatId = process.env.TG_CHAT_ID
+      if (token && chatId) {
         try {
-          await fetch(`https://api.callmebot.com/whatsapp.php?phone=${phone}&text=${encodeURIComponent(msg)}&apikey=${apikey}`)
+          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'Markdown' }),
+          })
         } catch { /* ignorar */ }
       }
 
