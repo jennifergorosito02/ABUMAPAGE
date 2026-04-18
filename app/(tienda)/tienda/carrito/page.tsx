@@ -378,10 +378,10 @@ export default function CarritoPage() {
                   <QRCodeSVG value={qrUrl} size={180} />
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: '13px', fontWeight: 600, color: '#111', marginBottom: '3px' }}>
-                      Escaneá con la cámara de tu celular
+                      Escaneá con la app de Mercado Pago
                     </div>
                     <div style={{ fontSize: '11px', color: '#666' }}>
-                      Funciona con cualquier banco o billetera virtual
+                      Solo disponible con Mercado Pago
                     </div>
                   </div>
                   <button onClick={() => { setQrUrl(''); localStorage.removeItem('pedidoEnCurso') }}
