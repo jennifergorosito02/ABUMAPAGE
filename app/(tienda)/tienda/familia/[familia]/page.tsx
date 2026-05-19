@@ -45,12 +45,14 @@ export default function FamiliaPage() {
   const [esAdmin, setEsAdmin] = useState(false)
   const [subiendo, setSubiendo] = useState(false)
   const [fotos, setFotos] = useState<string[]>([])
+  const [fotosNombres, setFotosNombres] = useState<string[]>([])
   const [fotoIdx, setFotoIdx] = useState(0)
   const [descripcion, setDescripcion] = useState('')
   const [editandoDesc, setEditandoDesc] = useState(false)
   const [guardandoDesc, setGuardandoDesc] = useState(false)
-  const [recargo, setRecargo] = useState(20)
-
+  const [modoOrden, setModoOrden] = useState(false)
+  const [ordenGuardado, setOrdenGuardado] = useState(false)
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
   useEffect(() => {
     async function init() {
       const authResult = await supabase.auth.getUser()
@@ -59,8 +61,6 @@ export default function FamiliaPage() {
         const profileResult = await supabase.from('profiles').select('rol').eq('id', user.id).single()
         setEsAdmin(profileResult.data?.rol === 'admin')
       }
-      const configResult = await supabase.from('configuracion').select('recargo_tarjeta').eq('id', 1).single()
-      if (configResult.data?.recargo_tarjeta != null) setRecargo(Number(configResult.data.recargo_tarjeta))
     }
     init()
   }, [])
@@ -69,12 +69,26 @@ export default function FamiliaPage() {
   async function cargarFotos(variantesActuales?: Variante[]) {
     const { data } = await supabase.storage.from('productos').list(folderKey, { limit: 50, sortBy: { column: 'created_at', order: 'asc' } })
     if (data && data.length > 0) {
-      const archivos = data.filter(f => f.name !== '.emptyFolderPlaceholder')
+      let archivos = data.filter((f: { name: string }) => f.name !== '.emptyFolderPlaceholder')
       if (archivos.length === 0) return
-      const urls = archivos.map(f => supabase.storage.from('productos').getPublicUrl(`${folderKey}/${f.name}`).data.publicUrl)
+
+      // Aplicar orden guardado si existe
+      const savedOrder = typeof window !== 'undefined' ? localStorage.getItem(`fotos-orden-${folderKey}`) : null
+      if (savedOrder) {
+        try {
+          const names = JSON.parse(savedOrder) as string[]
+          const ordenados = names.map(n => archivos.find((f: { name: string }) => f.name === n)).filter(Boolean)
+          const inOrder = new Set(names)
+          const nuevas = archivos.filter((f: { name: string }) => !inOrder.has(f.name))
+          archivos = [...ordenados, ...nuevas]
+        } catch {}
+      }
+
+      const nombres = archivos.map((f: { name: string }) => f.name)
+      const urls = archivos.map((f: { name: string }) => supabase.storage.from('productos').getPublicUrl(`${folderKey}/${f.name}`).data.publicUrl)
       setFotos(urls)
+      setFotosNombres(nombres)
       setFotoIdx(0)
-      // Sincronizar imagen_url si los productos no tienen foto todavía
       const vars = variantesActuales ?? variantes
       const sinImagen = vars.every(v => !v.imagen_url)
       if (sinImagen && urls[0]) {
@@ -87,15 +101,16 @@ export default function FamiliaPage() {
     setSubiendo(true)
     let primeraUrl: string | null = null
     for (const file of Array.from(files)) {
-      const ext = file.name.split('.').pop()
-      const path = `${folderKey}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-      const { error } = await supabase.storage.from('productos').upload(path, file, { upsert: false })
-      if (error) { alert('Error al subir: ' + error.message); setSubiendo(false); return }
-      if (!primeraUrl) {
-        primeraUrl = supabase.storage.from('productos').getPublicUrl(path).data.publicUrl
-      }
+      const ext = file.name.split('.').pop() ?? 'jpg'
+      const storagePath = `${folderKey}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('path', storagePath)
+      const res = await fetch('/api/upload-foto', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok) { alert('Error al subir: ' + (json.error ?? 'Error desconocido')); setSubiendo(false); return }
+      if (!primeraUrl) primeraUrl = json.url
     }
-    // Sincronizar imagen_url en la tabla para que aparezca en la tienda principal
     if (primeraUrl && fotos.length === 0) {
       await supabase.from('productos').update({ imagen_url: primeraUrl }).eq('familia', familia)
     }
@@ -103,14 +118,27 @@ export default function FamiliaPage() {
     setSubiendo(false)
   }
 
+  async function guardarOrden() {
+    localStorage.setItem(`fotos-orden-${folderKey}`, JSON.stringify(fotosNombres))
+    if (fotos[0]) {
+      await supabase.from('productos').update({ imagen_url: fotos[0] }).eq('familia', familia)
+    }
+    setModoOrden(false)
+    setOrdenGuardado(true)
+    setTimeout(() => setOrdenGuardado(false), 2000)
+  }
+
   async function eliminarFoto(url: string) {
     if (!confirm('¿Eliminar esta foto?')) return
-    // La URL tiene formato: .../storage/v1/object/public/productos/PATH
     const parts = url.split('/storage/v1/object/public/productos/')
     if (parts.length < 2) { alert('No se pudo identificar el archivo'); return }
     const path = decodeURIComponent(parts[1])
-    const { error } = await supabase.storage.from('productos').remove([path])
-    if (error) { alert('Error: ' + error.message); return }
+    const res = await fetch('/api/upload-foto', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+    })
+    if (!res.ok) { const j = await res.json(); alert('Error: ' + j.error); return }
     await cargarFotos()
   }
 
@@ -257,8 +285,8 @@ export default function FamiliaPage() {
             )}
           </div>
 
-          {/* Miniaturas — solo desktop, ocultas en mobile */}
-          {fotos.length > 1 && (
+          {/* Miniaturas normales — solo cuando NO está en modo reorden */}
+          {fotos.length > 1 && !modoOrden && (
             <div className="miniaturas-desktop" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               {fotos.map((url, i) => (
                 <button key={i} onClick={() => setFotoIdx(i)} style={{
@@ -272,20 +300,76 @@ export default function FamiliaPage() {
             </div>
           )}
 
-          {/* Botón subir fotos (admin) — acepta múltiples */}
-          {esAdmin && (
-            <label style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-              padding: '10px', borderRadius: '8px', cursor: 'pointer',
-              background: 'rgba(200,169,110,0.1)', border: '1px dashed rgba(200,169,110,0.4)',
-              fontSize: '13px', color: 'var(--gold)', opacity: subiendo ? 0.6 : 1,
-            }}>
-              <input type="file" accept="image/*" multiple style={{ display: 'none' }}
-                onChange={e => { if (e.target.files?.length) subirFoto(e.target.files) }}
-                disabled={subiendo}
-              />
-              {subiendo ? '⏳ Subiendo...' : '📷 Agregar fotos (podés seleccionar varias)'}
-            </label>
+          {/* Panel de reorden — drag & drop */}
+          {modoOrden && (
+            <div style={{ background: 'rgba(200,169,110,0.05)', border: '1px solid rgba(200,169,110,0.25)', borderRadius: '12px', padding: '14px' }}>
+              <p style={{ fontSize: '11px', color: 'rgba(200,169,110,0.6)', marginBottom: '12px', textAlign: 'center', letterSpacing: '0.06em' }}>
+                ARRASTRÁ LAS FOTOS PARA ORDENARLAS · LA N°1 SERÁ LA PORTADA
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: '8px' }}>
+                {fotos.map((url, i) => (
+                  <div key={i}
+                    draggable
+                    onDragStart={() => setDragIdx(i)}
+                    onDragOver={e => {
+                      e.preventDefault()
+                      if (dragIdx === null || dragIdx === i) return
+                      const f = [...fotos], n = [...fotosNombres]
+                      ;[f[dragIdx], f[i]] = [f[i], f[dragIdx]]
+                      ;[n[dragIdx], n[i]] = [n[i], n[dragIdx]]
+                      setFotos(f); setFotosNombres(n); setDragIdx(i)
+                    }}
+                    onDragEnd={() => setDragIdx(null)}
+                    style={{
+                      borderRadius: '10px', overflow: 'hidden', position: 'relative', cursor: 'grab',
+                      border: i === 0 ? '2px solid var(--gold)' : '2px solid rgba(255,255,255,0.08)',
+                      opacity: dragIdx === i ? 0.3 : 1, transition: 'opacity 0.15s',
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt="" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
+                    <div style={{ position: 'absolute', top: '5px', left: '5px', background: i === 0 ? 'var(--gold)' : 'rgba(0,0,0,0.75)', color: i === 0 ? '#000' : '#fff', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, pointerEvents: 'none' }}>
+                      {i + 1}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                <button onClick={() => { setModoOrden(false); setFotoIdx(0) }} style={{ flex: 1, padding: '10px', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(240,235,227,0.4)' }}>
+                  Cancelar
+                </button>
+                <button onClick={guardarOrden} style={{ flex: 2, padding: '10px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: ordenGuardado ? 'rgba(80,200,120,0.2)' : '#c8a96e', border: 'none', color: ordenGuardado ? '#50c878' : '#000' }}>
+                  {ordenGuardado ? '✓ Guardado' : 'Guardar orden'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Botones admin */}
+          {esAdmin && !modoOrden && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                padding: '10px', borderRadius: '8px', cursor: 'pointer',
+                background: 'rgba(200,169,110,0.1)', border: '1px dashed rgba(200,169,110,0.4)',
+                fontSize: '13px', color: 'var(--gold)', opacity: subiendo ? 0.6 : 1,
+              }}>
+                <input type="file" accept="image/*" multiple style={{ display: 'none' }}
+                  onChange={e => { if (e.target.files?.length) subirFoto(e.target.files) }}
+                  disabled={subiendo}
+                />
+                {subiendo ? '⏳ Subiendo...' : '📷 Agregar fotos (podés seleccionar varias)'}
+              </label>
+              {fotos.length > 1 && (
+                <button onClick={() => { setModoOrden(true); setFotoIdx(0) }} style={{
+                  padding: '10px', borderRadius: '8px', fontSize: '13px', cursor: 'pointer',
+                  background: 'rgba(200,169,110,0.08)', border: '1px solid rgba(200,169,110,0.35)',
+                  color: 'var(--gold)', width: '100%', fontWeight: 600,
+                }}>
+                  ↕ Reordenar fotos
+                </button>
+              )}
+            </div>
           )}
         </div>
 
@@ -307,12 +391,11 @@ export default function FamiliaPage() {
 
           {seleccionada && (
             <div>
-              <div style={{ fontSize: '11px', color: 'rgba(240,235,227,0.4)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '4px' }}>Efectivo / Transferencia</div>
               <div style={{ fontSize: '34px', fontWeight: 700, color: 'var(--gold)', lineHeight: 1 }}>
-                {formatARS(seleccionada.precio_venta)}
+                {formatARS(Math.round(seleccionada.precio_venta * 1.20))}
               </div>
-              <div style={{ fontSize: '13px', color: 'rgba(240,235,227,0.4)', marginTop: '6px' }}>
-                Crédito: {formatARS(Math.round(seleccionada.precio_venta * (1 + recargo / 100)))}
+              <div style={{ fontSize: '12px', color: '#5ecb8a', marginTop: '8px', fontWeight: 600, letterSpacing: '0.03em' }}>
+                10% OFF pagando con Transferencia o QR
               </div>
             </div>
           )}
