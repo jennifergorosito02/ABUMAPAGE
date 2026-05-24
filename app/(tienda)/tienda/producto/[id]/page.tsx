@@ -14,6 +14,7 @@ interface Producto {
   fragancia: string | null
   precio_venta: number
   stock: number
+  imagen_url: string | null
 }
 
 function formatARS(n: number) {
@@ -36,12 +37,18 @@ export default function ProductoPage() {
   const [loading, setLoading] = useState(true)
   const [cantidad, setCantidad] = useState(1)
   const [agregado, setAgregado] = useState(false)
+  const [esAdmin, setEsAdmin] = useState(false)
+  const [subiendo, setSubiendo] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(r => { if (r.data.user) setEsAdmin(true) })
+  }, [])
 
   useEffect(() => {
     async function fetch() {
       const { data } = await supabase
         .from('productos')
-        .select('id, nombre, linea, marca, fragancia, precio_venta, stock')
+        .select('id, nombre, linea, marca, fragancia, precio_venta, stock, imagen_url')
         .eq('id', id)
         .eq('activo', true)
         .single()
@@ -50,6 +57,22 @@ export default function ProductoPage() {
     }
     if (id) fetch()
   }, [id])
+
+  async function subirFoto(file: File) {
+    if (!producto) return
+    setSubiendo(true)
+    const ext = file.name.split('.').pop() ?? 'jpg'
+    const path = `${producto.id}.${ext}`
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('path', path)
+    const res = await fetch('/api/upload-foto', { method: 'POST', body: fd })
+    const json = await res.json()
+    if (!res.ok) { alert('Error al subir: ' + (json.error ?? 'Error desconocido')); setSubiendo(false); return }
+    await supabase.from('productos').update({ imagen_url: json.url }).eq('id', producto.id)
+    setProducto(prev => prev ? { ...prev, imagen_url: json.url } : prev)
+    setSubiendo(false)
+  }
 
   function agregarAlCarrito() {
     if (!producto) return
@@ -86,16 +109,40 @@ export default function ProductoPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px' }} className="producto-grid">
 
         {/* Imagen */}
-        <div style={{
-          background: 'linear-gradient(135deg, var(--bg-card) 0%, rgba(200,169,110,0.06) 100%)',
-          border: '1px solid var(--border)',
-          borderRadius: '16px',
-          aspectRatio: '1',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="var(--gold-dim)" strokeWidth="0.8">
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-          </svg>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{
+            background: 'linear-gradient(135deg, #1a1208 0%, #3d2a08 100%)',
+            border: '1px solid var(--border)',
+            borderRadius: '16px',
+            aspectRatio: '1',
+            overflow: 'hidden',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            position: 'relative',
+          }}>
+            {producto.imagen_url
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={producto.imagen_url} alt={producto.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="rgba(200,169,110,0.2)" strokeWidth="0.8">
+                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                </svg>
+            }
+          </div>
+
+          {/* Botón subir foto (admin) */}
+          {esAdmin && (
+            <label style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+              padding: '10px', borderRadius: '8px', cursor: 'pointer',
+              background: 'rgba(200,169,110,0.1)', border: '1px dashed rgba(200,169,110,0.4)',
+              fontSize: '13px', color: 'var(--gold)', opacity: subiendo ? 0.6 : 1,
+            }}>
+              <input type="file" accept="image/*" style={{ display: 'none' }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) subirFoto(f) }}
+                disabled={subiendo}
+              />
+              {subiendo ? '⏳ Subiendo...' : '📷 ' + (producto.imagen_url ? 'Cambiar foto' : 'Agregar foto')}
+            </label>
+          )}
         </div>
 
         {/* Info */}
@@ -123,13 +170,12 @@ export default function ProductoPage() {
             <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Fragancia: {producto.fragancia}</p>
           )}
 
-          {false && (
-            <p style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.6 }}>
-            </p>
-          )}
-
           <div style={{ fontSize: '32px', fontWeight: 700, color: 'var(--gold)' }}>
-            {formatARS(producto.precio_venta)}
+            {formatARS(Math.round(producto.precio_venta * 1.20))}
+          </div>
+
+          <div style={{ fontSize: '12px', color: '#5ecb8a', fontWeight: 600, letterSpacing: '0.03em' }}>
+            10% OFF pagando con Transferencia o QR
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -142,28 +188,18 @@ export default function ProductoPage() {
             </span>
           </div>
 
-          {/* Cantidad + Agregar */}
           {producto.stock > 0 && (
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
-                <button
-                  onClick={() => setCantidad(q => Math.max(1, q - 1))}
-                  style={{ padding: '10px 16px', background: 'transparent', color: 'var(--text)', border: 'none', cursor: 'pointer', fontSize: '18px' }}
-                >−</button>
+                <button onClick={() => setCantidad(q => Math.max(1, q - 1))} style={{ padding: '10px 16px', background: 'transparent', color: 'var(--text)', border: 'none', cursor: 'pointer', fontSize: '18px' }}>−</button>
                 <span style={{ padding: '10px 16px', fontSize: '16px', fontWeight: 600, minWidth: '40px', textAlign: 'center' }}>{cantidad}</span>
-                <button
-                  onClick={() => setCantidad(q => Math.min(producto.stock, q + 1))}
-                  style={{ padding: '10px 16px', background: 'transparent', color: 'var(--text)', border: 'none', cursor: 'pointer', fontSize: '18px' }}
-                >+</button>
+                <button onClick={() => setCantidad(q => Math.min(producto.stock, q + 1))} style={{ padding: '10px 16px', background: 'transparent', color: 'var(--text)', border: 'none', cursor: 'pointer', fontSize: '18px' }}>+</button>
               </div>
-              <button
-                onClick={agregarAlCarrito}
-                style={{
-                  flex: 1, padding: '12px 24px', borderRadius: '8px', fontSize: '15px', fontWeight: 600,
-                  background: agregado ? 'var(--success)' : 'var(--gold)',
-                  color: '#000', border: 'none', cursor: 'pointer', transition: 'all 0.2s',
-                }}
-              >
+              <button onClick={agregarAlCarrito} style={{
+                flex: 1, padding: '12px 24px', borderRadius: '8px', fontSize: '15px', fontWeight: 600,
+                background: agregado ? 'var(--success)' : 'var(--gold)',
+                color: '#000', border: 'none', cursor: 'pointer', transition: 'all 0.2s',
+              }}>
                 {agregado ? '✓ Agregado al carrito' : 'Agregar al carrito'}
               </button>
             </div>
