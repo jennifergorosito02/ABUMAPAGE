@@ -131,6 +131,26 @@ export default function FamiliaPage() {
     setTimeout(() => setOrdenGuardado(false), 2000)
   }
 
+  async function subirVideo(files: FileList) {
+    setSubiendo(true)
+    let primeraUrl: string | null = null
+    for (const file of Array.from(files)) {
+      const ext = file.name.split('.').pop() ?? 'mp4'
+      const path = `${folderKey}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+      const res = await fetch(`/api/upload-foto?path=${encodeURIComponent(path)}`)
+      if (!res.ok) { const j = await res.json(); alert('Error al preparar upload: ' + j.error); setSubiendo(false); return }
+      const { token } = await res.json()
+      const { error } = await supabase.storage.from('productos').uploadToSignedUrl(path, token, file, { contentType: file.type })
+      if (error) { alert('Error al subir video: ' + error.message); setSubiendo(false); return }
+      if (!primeraUrl) primeraUrl = supabase.storage.from('productos').getPublicUrl(path).data.publicUrl
+    }
+    if (primeraUrl && fotos.length === 0) {
+      await supabase.from('productos').update({ imagen_url: primeraUrl }).eq('familia', familia)
+    }
+    await cargarFotos()
+    setSubiendo(false)
+  }
+
   async function eliminarFoto(url: string) {
     if (!confirm('¿Eliminar este archivo?')) return
     const parts = url.split('/storage/v1/object/public/productos/')
@@ -386,7 +406,7 @@ export default function FamiliaPage() {
                 fontSize: '13px', color: 'var(--gold)', opacity: subiendo ? 0.6 : 1,
               }}>
                 <input type="file" accept="video/mp4,video/quicktime,video/webm,video/avi" multiple style={{ display: 'none' }}
-                  onChange={e => { if (e.target.files?.length) subirFoto(e.target.files) }}
+                  onChange={e => { if (e.target.files?.length) subirVideo(e.target.files) }}
                   disabled={subiendo}
                 />
                 {subiendo ? '⏳ Subiendo...' : '🎥 Agregar video'}
