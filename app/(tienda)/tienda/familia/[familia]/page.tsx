@@ -18,6 +18,9 @@ interface Variante {
   descripcion: string | null
 }
 
+function isVideo(url: string) {
+  return /\.(mp4|mov|webm|avi|ogv)(\?|#|$)/i.test(url)
+}
 function formatARS(n: number) {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n)
 }
@@ -129,7 +132,7 @@ export default function FamiliaPage() {
   }
 
   async function eliminarFoto(url: string) {
-    if (!confirm('¿Eliminar esta foto?')) return
+    if (!confirm('¿Eliminar este archivo?')) return
     const parts = url.split('/storage/v1/object/public/productos/')
     if (parts.length < 2) { alert('No se pudo identificar el archivo'); return }
     const path = decodeURIComponent(parts[1])
@@ -236,8 +239,10 @@ export default function FamiliaPage() {
             {/* Carrusel de imágenes */}
             <div style={{ display: 'flex', width: `${fotos.length * 100}%`, height: '100%', transform: `translateX(-${fotoIdx * (100 / fotos.length)}%)`, transition: 'transform 0.35s ease' }}>
               {fotos.length > 0 ? fotos.map((url, i) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={i} src={url} alt={familia} style={{ width: `${100 / fotos.length}%`, height: '100%', objectFit: 'cover', flexShrink: 0 }} />
+                isVideo(url)
+                  ? <video key={i} src={url} style={{ width: `${100 / fotos.length}%`, height: '100%', objectFit: 'cover', flexShrink: 0 }} controls playsInline />
+                  // eslint-disable-next-line @next/next/no-img-element
+                  : <img key={i} src={url} alt={familia} style={{ width: `${100 / fotos.length}%`, height: '100%', objectFit: 'cover', flexShrink: 0 }} />
               )) : (
                 <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="rgba(200,169,110,0.2)" strokeWidth="0.8">
@@ -291,10 +296,17 @@ export default function FamiliaPage() {
               {fotos.map((url, i) => (
                 <button key={i} onClick={() => setFotoIdx(i)} style={{
                   width: '64px', height: '64px', borderRadius: '8px', overflow: 'hidden', padding: 0, cursor: 'pointer',
-                  border: `2px solid ${i === fotoIdx ? 'var(--gold)' : 'var(--border)'}`, flexShrink: 0,
+                  border: `2px solid ${i === fotoIdx ? 'var(--gold)' : 'var(--border)'}`, flexShrink: 0, position: 'relative',
                 }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  {isVideo(url) ? (
+                    <>
+                      <video src={url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)', color: '#fff', fontSize: '20px' }}>▶</div>
+                    </>
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  )}
                 </button>
               ))}
             </div>
@@ -326,8 +338,15 @@ export default function FamiliaPage() {
                       opacity: dragIdx === i ? 0.3 : 1, transition: 'opacity 0.15s',
                     }}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={url} alt="" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
+                    {isVideo(url) ? (
+                      <div style={{ width: '100%', aspectRatio: '1', position: 'relative', background: '#111', display: 'block' }}>
+                        <video src={url} style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />
+                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '24px', pointerEvents: 'none' }}>▶</div>
+                      </div>
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={url} alt="" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
+                    )}
                     <div style={{ position: 'absolute', top: '5px', left: '5px', background: i === 0 ? 'var(--gold)' : 'rgba(0,0,0,0.75)', color: i === 0 ? '#000' : '#fff', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, pointerEvents: 'none' }}>
                       {i + 1}
                     </div>
@@ -359,6 +378,18 @@ export default function FamiliaPage() {
                   disabled={subiendo}
                 />
                 {subiendo ? '⏳ Subiendo...' : '📷 Agregar fotos (podés seleccionar varias)'}
+              </label>
+              <label style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                padding: '10px', borderRadius: '8px', cursor: 'pointer',
+                background: 'rgba(200,169,110,0.1)', border: '1px dashed rgba(200,169,110,0.4)',
+                fontSize: '13px', color: 'var(--gold)', opacity: subiendo ? 0.6 : 1,
+              }}>
+                <input type="file" accept="video/mp4,video/quicktime,video/webm,video/avi" multiple style={{ display: 'none' }}
+                  onChange={e => { if (e.target.files?.length) subirFoto(e.target.files) }}
+                  disabled={subiendo}
+                />
+                {subiendo ? '⏳ Subiendo...' : '🎥 Agregar video'}
               </label>
               {fotos.length > 1 && (
                 <button onClick={() => { setModoOrden(true); setFotoIdx(0) }} style={{
