@@ -57,36 +57,38 @@ export default function InventarioPage() {
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [uploadingId, setUploadingId] = useState<number | null>(null)
   const [confirmarEliminar, setConfirmarEliminar] = useState<number | null>(null)
+  const [nombreDuplicado, setNombreDuplicado] = useState<{ id: number; nombre: string } | null>(null)
 
   const showToast = (msg: string, tipo: 'ok' | 'error' = 'ok') => {
     setToast({ msg, tipo })
     setTimeout(() => setToast(null), 3000)
   }
 
-  const fetchProductos = useCallback(async (p = 0) => {
+  const fetchProductos = useCallback(async (p: number, q: string, linea: string) => {
     setLoading(true)
     const from = p * PAGE_SIZE
     const to = from + PAGE_SIZE - 1
-    const { data, count } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let query: any = supabase
       .from('productos')
       .select('*, proveedores(nombre)', { count: 'exact' })
       .eq('activo', true)
       .order('linea')
       .order('nombre')
-      .range(from, to)
-    const prods = data ?? []
-    setProductos(prods)
-    setTotalCount(count ?? 0)
-    if (p === 0) {
-      // Cargamos líneas solo en la primera página (no cambian con paginación)
-      const { data: todasLineas } = await supabase
-        .from('productos')
-        .select('linea')
-        .eq('activo', true)
-        .not('linea', 'is', null)
-      const lineasUnicas = [...new Set((todasLineas ?? []).map((x: { linea: string }) => x.linea))].sort() as string[]
-      setLineas(lineasUnicas)
+    if (q.trim()) {
+      query = query.or(`nombre.ilike.%${q.trim()}%,fragancia.ilike.%${q.trim()}%,marca.ilike.%${q.trim()}%,sku_display.ilike.%${q.trim()}%`)
     }
+    if (linea) {
+      query = query.eq('linea', linea)
+    }
+    const { data, count } = await query.range(from, to)
+    setProductos(data ?? [])
+    setTotalCount(count ?? 0)
+    // Siempre recargar la lista de líneas (no dependen de los filtros)
+    const { data: todasLineas } = await supabase
+      .from('productos').select('linea').eq('activo', true).not('linea', 'is', null)
+    const lineasUnicas = [...new Set((todasLineas ?? []).map((x: { linea: string }) => x.linea))].sort() as string[]
+    setLineas(lineasUnicas)
     setLoading(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -96,25 +98,47 @@ export default function InventarioPage() {
     setProveedores(data ?? [])
   }, [])
 
+  // Carga inicial
   useEffect(() => {
-    fetchProductos(page)
+    fetchProductos(0, '', '')
     fetchProveedores()
-  }, [fetchProductos, fetchProveedores, page])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  // Filtrar
-  const filtered = productos.filter(p => {
-    const q = search.toLowerCase()
-    const matchSearch = !q || p.nombre.toLowerCase().includes(q) ||
-      (p.fragancia?.toLowerCase().includes(q) ?? false) ||
-      (p.sku_display?.toLowerCase().includes(q) ?? false) ||
-      (p.marca?.toLowerCase().includes(q) ?? false)
-    const matchLinea = !filterLinea || p.linea === filterLinea
-    const matchStock = !filterStock ||
-      (filterStock === 'sin' && p.stock === 0) ||
-      (filterStock === 'bajo' && p.stock > 0 && p.stock <= p.stock_minimo) ||
-      (filterStock === 'ok' && p.stock > p.stock_minimo)
-    return matchSearch && matchLinea && matchStock
-  })
+  // Búsqueda y filtro de línea con debounce — busca en TODOS los productos vía Supabase
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setPage(0)
+      fetchProductos(0, search, filterLinea)
+    }, 300)
+    return () => clearTimeout(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, filterLinea])
+
+  // Verificar nombre duplicado mientras escribe
+  useEffect(() => {
+    const nombre = form.nombre.trim()
+    if (!nombre || nombre.length < 3) { setNombreDuplicado(null); return }
+    const t = setTimeout(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let q: any = supabase.from('productos').select('id, nombre').eq('activo', true).ilike('nombre', nombre).limit(1)
+      if (editando) q = q.neq('id', editando.id)
+      const { data } = await q
+      setNombreDuplicado(data?.[0] ?? null)
+    }, 400)
+    return () => clearTimeout(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.nombre, editando])
+
+  // Filtro de stock — sigue siendo client-side (comparación entre columnas)
+  const filtered = filterStock
+    ? productos.filter(p => {
+        if (filterStock === 'sin') return p.stock === 0
+        if (filterStock === 'bajo') return p.stock > 0 && p.stock <= p.stock_minimo
+        if (filterStock === 'ok') return p.stock > p.stock_minimo
+        return true
+      })
+    : productos
 
   // Stats — basados en la página actual (aproximados) y el count total
   const sinStock = productos.filter(p => p.stock === 0).length
@@ -208,11 +232,16 @@ export default function InventarioPage() {
     setModalOpen(false)
     setEditando(null)
     setForm(EMPTY_FORM)
+    setNombreDuplicado(null)
   }
 
   // Guardar
   async function handleGuardar(e: React.FormEvent) {
     e.preventDefault()
+    if (nombreDuplicado && !editando) {
+      showToast(`Ya existe "${nombreDuplicado.nombre}" — revisá si ya está cargado`, 'error')
+      return
+    }
     setSaving(true)
 
     const payload = {
@@ -242,19 +271,22 @@ export default function InventarioPage() {
 
     showToast(editando ? 'Producto actualizado' : 'Producto creado')
     cerrarModal()
-    fetchProductos()
+    fetchProductos(0, search, filterLinea)
   }
 
-  // Subir foto
+  // Subir foto (vía API server-side con service_role para evitar bloqueos de RLS)
   async function handleFoto(p: Producto, file: File) {
     setUploadingId(p.id)
-    const ext = file.name.split('.').pop()
-    const path = `${p.id}.${ext}`
-    const { error: upErr } = await supabase.storage.from('productos').upload(path, file, { upsert: true })
-    if (upErr) { showToast('Error al subir imagen', 'error'); setUploadingId(null); return }
-    const { data: { publicUrl } } = supabase.storage.from('productos').getPublicUrl(path)
-    await supabase.from('productos').update({ imagen_url: publicUrl }).eq('id', p.id)
-    setProductos(prev => prev.map(x => x.id === p.id ? { ...x, imagen_url: publicUrl } : x))
+    const ext = file.name.split('.').pop() ?? 'jpg'
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('path', `${p.id}.${ext}`)
+    const res = await fetch('/api/upload-foto', { method: 'POST', body: fd })
+    const json = await res.json()
+    if (!res.ok) { showToast('Error al subir imagen', 'error'); setUploadingId(null); return }
+    await supabase.from('productos').update({ imagen_url: json.url }).eq('id', p.id)
+    setProductos(prev => prev.map(x => x.id === p.id ? { ...x, imagen_url: json.url } : x))
+    setEditando((prev: Producto | null) => prev?.id === p.id ? { ...prev, imagen_url: json.url } as Producto : prev)
     showToast('Foto subida correctamente')
     setUploadingId(null)
   }
@@ -364,7 +396,7 @@ export default function InventarioPage() {
           <option value="sin">Sin stock</option>
         </select>
 
-        <button onClick={() => { setPage(0); fetchProductos(0) }} className="btn btn-ghost btn-sm" title="Actualizar">
+        <button onClick={() => { setPage(0); fetchProductos(0, search, filterLinea) }} className="btn btn-ghost btn-sm" title="Actualizar">
           <RefreshCw size={14} />
         </button>
 
@@ -523,13 +555,13 @@ export default function InventarioPage() {
             <div style={{ display: 'flex', gap: '6px' }}>
               <button
                 disabled={page === 0}
-                onClick={() => setPage(p => p - 1)}
+                onClick={() => { const np = page - 1; setPage(np); fetchProductos(np, search, filterLinea) }}
                 className="btn btn-ghost btn-sm"
                 style={{ opacity: page === 0 ? 0.4 : 1 }}
               >← Anterior</button>
               <button
                 disabled={page + 1 >= totalPages}
-                onClick={() => setPage(p => p + 1)}
+                onClick={() => { const np = page + 1; setPage(np); fetchProductos(np, search, filterLinea) }}
                 className="btn btn-ghost btn-sm"
                 style={{ opacity: page + 1 >= totalPages ? 0.4 : 1 }}
               >Siguiente →</button>
@@ -562,7 +594,18 @@ export default function InventarioPage() {
                   <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '5px' }}>
                     Nombre *
                   </label>
-                  <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} required placeholder="Nombre del producto" />
+                  <input
+                    value={form.nombre}
+                    onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
+                    required
+                    placeholder="Nombre del producto"
+                    style={nombreDuplicado && !editando ? { borderColor: 'var(--warning)' } : {}}
+                  />
+                  {nombreDuplicado && !editando && (
+                    <div style={{ fontSize: '12px', color: 'var(--warning)', marginTop: '5px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      ⚠ Ya existe <strong>"{nombreDuplicado.nombre}"</strong> — verificá si ya está cargado antes de guardar
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -650,6 +693,43 @@ export default function InventarioPage() {
                     style={{ width: '100%', resize: 'vertical', boxSizing: 'border-box' }}
                   />
                 </div>
+
+                {/* Foto — solo al editar (al crear no hay ID aún) */}
+                {editando && (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                      Foto del producto
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      {editando.imagen_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={editando.imagen_url} alt="" style={{ width: '64px', height: '64px', objectFit: 'cover', borderRadius: '8px', border: '1px solid var(--border)', flexShrink: 0 }} />
+                      ) : (
+                        <div style={{ width: '64px', height: '64px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-input)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', color: 'var(--text-muted)' }}>
+                          📷
+                        </div>
+                      )}
+                      <label style={{
+                        display: 'flex', alignItems: 'center', gap: '8px',
+                        padding: '8px 14px', borderRadius: '6px',
+                        cursor: uploadingId === editando.id ? 'wait' : 'pointer',
+                        background: 'rgba(200,169,110,0.08)', border: '1px dashed rgba(200,169,110,0.35)',
+                        fontSize: '13px', color: uploadingId === editando.id ? 'var(--text-muted)' : 'var(--gold)',
+                        opacity: uploadingId === editando.id ? 0.6 : 1, transition: 'opacity 0.2s',
+                      }}>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          style={{ display: 'none' }}
+                          disabled={uploadingId !== null}
+                          onChange={e => { const f = e.target.files?.[0]; if (f) handleFoto(editando, f) }}
+                        />
+                        <ImagePlus size={14} />
+                        {uploadingId === editando.id ? 'Subiendo...' : editando.imagen_url ? 'Cambiar foto' : 'Subir foto'}
+                      </label>
+                    </div>
+                  </div>
+                )}
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
