@@ -58,6 +58,9 @@ export default function InventarioPage() {
   const [uploadingId, setUploadingId] = useState<number | null>(null)
   const [confirmarEliminar, setConfirmarEliminar] = useState<number | null>(null)
   const [nombreDuplicado, setNombreDuplicado] = useState<{ id: number; nombre: string } | null>(null)
+  const [verPapelera, setVerPapelera] = useState(false)
+  const [papelera, setPapelera] = useState<Producto[]>([])
+  const [loadingPapelera, setLoadingPapelera] = useState(false)
 
   const showToast = (msg: string, tipo: 'ok' | 'error' = 'ok') => {
     setToast({ msg, tipo })
@@ -304,7 +307,36 @@ export default function InventarioPage() {
     setProductos(prev => prev.filter(p => p.id !== confirmarEliminar))
     setDeletingId(null)
     if (error) { showToast('Error al desactivar', 'error'); return }
-    showToast('Producto desactivado')
+    showToast('Producto desactivado — podés recuperarlo desde Papelera')
+  }
+
+  async function fetchPapelera() {
+    setLoadingPapelera(true)
+    const { data } = await supabase
+      .from('productos')
+      .select('id, nombre, linea, marca, fragancia, familia')
+      .eq('activo', false)
+      .order('linea').order('nombre')
+    setPapelera((data ?? []) as Producto[])
+    setLoadingPapelera(false)
+  }
+
+  async function reactivarProducto(id: number) {
+    const { error } = await supabase.from('productos').update({ activo: true }).eq('id', id)
+    if (error) { showToast('Error al reactivar', 'error'); return }
+    setPapelera(prev => prev.filter(p => p.id !== id))
+    showToast('Producto reactivado')
+    fetchProductos(0, search, filterLinea)
+  }
+
+  async function reactivarTodosPapelera() {
+    const ids = papelera.map(p => p.id)
+    if (ids.length === 0) return
+    const { error } = await supabase.from('productos').update({ activo: true }).in('id', ids)
+    if (error) { showToast('Error al reactivar', 'error'); return }
+    setPapelera([])
+    showToast(`${ids.length} productos reactivados`)
+    fetchProductos(0, search, filterLinea)
   }
 
   return (
@@ -328,12 +360,16 @@ export default function InventarioPage() {
       {/* Modal confirmar eliminar */}
       {confirmarEliminar !== null && (
         <div className="overlay" onClick={e => { if (e.target === e.currentTarget) setConfirmarEliminar(null) }}>
-          <div className="modal fade-in" style={{ maxWidth: '380px' }}>
+          <div className="modal fade-in" style={{ maxWidth: '420px' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', fontWeight: 600, fontSize: '16px' }}>
               Desactivar producto
             </div>
             <div style={{ padding: '20px 24px', fontSize: '14px', color: 'var(--text-secondary)' }}>
-              ¿Querés desactivar este producto? No se eliminará de la base de datos y podés reactivarlo después.
+              <p style={{ marginBottom: '12px' }}>¿Querés desactivar este producto?</p>
+              <div style={{ background: 'rgba(200,150,50,0.08)', border: '1px solid rgba(200,150,50,0.25)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', color: 'var(--text)', fontWeight: 500, marginBottom: '12px' }}>
+                {productos.find(p => p.id === confirmarEliminar)?.nombre ?? `ID ${confirmarEliminar}`}
+              </div>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No se elimina de la base de datos. Podés recuperarlo desde <strong>Papelera</strong> en cualquier momento.</p>
             </div>
             <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button className="btn btn-ghost" onClick={() => setConfirmarEliminar(null)}>Cancelar</button>
@@ -400,10 +436,76 @@ export default function InventarioPage() {
           <RefreshCw size={14} />
         </button>
 
+        <button
+          onClick={() => { setVerPapelera(v => { if (!v) fetchPapelera(); return !v }) }}
+          className="btn btn-ghost btn-sm"
+          style={{ color: verPapelera ? 'var(--warning)' : 'var(--text-muted)', borderColor: verPapelera ? 'rgba(200,150,50,0.4)' : undefined }}
+          title="Ver productos desactivados"
+        >
+          🗑 Papelera
+        </button>
+
         <button onClick={abrirNuevo} className="btn btn-primary btn-sm">
           <Plus size={15} /> Nuevo
         </button>
       </div>
+
+      {/* Papelera */}
+      {verPapelera && (
+        <div className="card" style={{ padding: 0, border: '1px solid rgba(200,150,50,0.3)' }}>
+          <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+            <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--warning)' }}>
+              🗑 Papelera — {loadingPapelera ? '...' : `${papelera.length} productos desactivados`}
+            </span>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {papelera.length > 1 && (
+                <button onClick={reactivarTodosPapelera} className="btn btn-sm" style={{ background: 'rgba(80,200,120,0.15)', color: 'var(--success)', border: '1px solid rgba(80,200,120,0.3)', fontSize: '12px' }}>
+                  ↩ Reactivar todos ({papelera.length})
+                </button>
+              )}
+              <button onClick={fetchPapelera} className="btn btn-ghost btn-sm"><RefreshCw size={14} /></button>
+            </div>
+          </div>
+          {loadingPapelera ? (
+            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>Cargando...</div>
+          ) : papelera.length === 0 ? (
+            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>No hay productos desactivados</div>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Nombre</th>
+                    <th>Línea</th>
+                    <th>Marca</th>
+                    <th>Familia</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {papelera.map(p => (
+                    <tr key={p.id}>
+                      <td style={{ fontSize: '13px' }}>{p.nombre}</td>
+                      <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{p.linea ?? '—'}</td>
+                      <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{p.marca ?? '—'}</td>
+                      <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{(p as any).familia ?? '—'}</td>
+                      <td>
+                        <button
+                          onClick={() => reactivarProducto(p.id)}
+                          className="btn btn-sm"
+                          style={{ background: 'rgba(80,200,120,0.15)', color: 'var(--success)', border: '1px solid rgba(80,200,120,0.3)', fontSize: '12px' }}
+                        >
+                          ↩ Reactivar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Tabla */}
       <div className="card" style={{ padding: 0 }}>
