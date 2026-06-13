@@ -79,7 +79,7 @@ export default function InventarioPage() {
       .order('linea')
       .order('nombre')
     if (q.trim()) {
-      query = query.or(`nombre.ilike.%${q.trim()}%,fragancia.ilike.%${q.trim()}%,marca.ilike.%${q.trim()}%,sku_display.ilike.%${q.trim()}%`)
+      query = query.or(`nombre.ilike.%${q.trim()}%,fragancia.ilike.%${q.trim()}%,marca.ilike.%${q.trim()}%,sku_display.ilike.%${q.trim()}%,linea.ilike.%${q.trim()}%,familia.ilike.%${q.trim()}%`)
     }
     if (linea) {
       query = query.eq('linea', linea)
